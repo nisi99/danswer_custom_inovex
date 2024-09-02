@@ -148,7 +148,7 @@ def _index_vespa_chunk(
         CONTENT: remove_invalid_unicode_chars(
             f"{chunk.title_prefix}{chunk.content}{chunk.metadata_suffix_keyword}"
         ),
-        IMAGE: "test test" + chunk.image,
+        IMAGE: chunk.image,
         # This duplication of `content` is needed for keyword highlighting
         # Note that it's not exactly the same as the actual content
         # which contains the title prefix and metadata suffix

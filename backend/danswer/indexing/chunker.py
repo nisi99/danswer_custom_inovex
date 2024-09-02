@@ -76,6 +76,7 @@ def _combine_chunks(chunks: list[DocAwareChunk], index: int) -> DocAwareChunk:
         chunk_id=index,
         blurb=chunks[0].blurb,
         content=chunks[0].content,
+        image=chunks[0].image,
         source_links=chunks[0].source_links or {},
         section_continuation=(index > 0),
         title_prefix=chunks[0].title_prefix,
@@ -179,9 +180,11 @@ class Chunker:
         chunks: list[DocAwareChunk] = []
         link_offsets: dict[int, str] = {}
         chunk_text = ""
+        chunk_image = ""
 
         def _create_chunk(
             text: str,
+            image: str,
             links: dict[int, str],
             is_continuation: bool = False,
         ) -> DocAwareChunk:
@@ -190,6 +193,7 @@ class Chunker:
                 chunk_id=len(chunks),
                 blurb=self._extract_blurb(text),
                 content=text,
+                image=image,
                 source_links=links or {0: ""},
                 section_continuation=is_continuation,
                 title_prefix=title_prefix,
@@ -208,8 +212,8 @@ class Chunker:
             # Therefore, they start a new chunk and are not concatenated
             # at the end by other sections
             if section_token_count > content_token_limit:
-                if chunk_text:
-                    chunks.append(_create_chunk(chunk_text, link_offsets))
+                if chunk_text and chunk_image:
+                    chunks.append(_create_chunk(chunk_text, chunk_image, link_offsets))
                     link_offsets = {}
                     chunk_text = ""
 
@@ -218,6 +222,7 @@ class Chunker:
                     chunks.append(
                         _create_chunk(
                             text=split_text,
+                            image=chunk_image,
                             links={0: section_link_text},
                             is_continuation=(i != 0),
                         )
@@ -237,7 +242,7 @@ class Chunker:
                 chunk_text += section_text
                 link_offsets[current_offset] = section_link_text
             else:
-                chunks.append(_create_chunk(chunk_text, link_offsets))
+                chunks.append(_create_chunk(chunk_text, chunk_image, link_offsets))
                 link_offsets = {0: section_link_text}
                 chunk_text = section_text
 
@@ -248,6 +253,7 @@ class Chunker:
             chunks.append(
                 _create_chunk(
                     chunk_text,
+                    chunk_image,
                     link_offsets or {0: section_link_text},
                 )
             )
