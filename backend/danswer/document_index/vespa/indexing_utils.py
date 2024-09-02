@@ -19,6 +19,7 @@ from danswer.document_index.vespa_constants import BLURB
 from danswer.document_index.vespa_constants import BOOST
 from danswer.document_index.vespa_constants import CHUNK_ID
 from danswer.document_index.vespa_constants import CONTENT
+from danswer.document_index.vespa_constants import IMAGE
 from danswer.document_index.vespa_constants import CONTENT_SUMMARY
 from danswer.document_index.vespa_constants import DOC_UPDATED_AT
 from danswer.document_index.vespa_constants import DOCUMENT_ID
@@ -147,6 +148,7 @@ def _index_vespa_chunk(
         CONTENT: remove_invalid_unicode_chars(
             f"{chunk.title_prefix}{chunk.content}{chunk.metadata_suffix_keyword}"
         ),
+        IMAGE: "test test" + chunk.image,
         # This duplication of `content` is needed for keyword highlighting
         # Note that it's not exactly the same as the actual content
         # which contains the title prefix and metadata suffix

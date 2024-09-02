@@ -25,6 +25,8 @@ from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
 )
+from danswer.connectors.confluence.image_parsing_utils import get_images_data
+
 from danswer.connectors.interfaces import GenerateDocumentsOutput
 from danswer.connectors.interfaces import LoadConnector
 from danswer.connectors.interfaces import PollConnector
@@ -103,6 +105,16 @@ def parse_html_page(text: str, confluence_client: Confluence) -> str:
         # Include @ sign for tagging, more clear for LLM
         user.replaceWith("@" + _get_user(user_id, confluence_client))
     return format_document_soup(soup)
+
+
+def parse_images(text: str, page_id: str, confluence_client: Confluence) -> list[dict]:
+    """Parse a Confluence html page and extract images."""
+    soup = bs4.BeautifulSoup(text, "html.parser")
+
+    path_to_images_folder = "/Users/denisehartmann/Documents/danswer_custom/backend/danswer/connectors/confluence/images"
+    images_data = []
+    images_data = get_images_data(images_data, soup, Confluence, page_id, path_to_images_folder)
+    return images_data
 
 
 def get_used_attachments(text: str, confluence_client: Confluence) -> list[str]:
@@ -646,7 +658,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=page_url,
-                    sections=[Section(link=page_url, text=page_text)],
+                    sections=[Section(link=page_url, text=page_text, image="")],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=page["title"],
                     doc_updated_at=last_modified,
@@ -656,6 +668,30 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                     metadata=doc_metadata,
                 )
             )
+
+            page_images = parse_images(page_html, page_id, self.confluence_client)
+            logger.warning(page_images)
+
+            if page_images:
+                for image in page_images:
+                    logger.warning(image)
+                    page_url = image["url"]
+
+                    doc_batch.append(
+                        Document(
+                            id=page_url,
+                            sections=[Section(link=page_url, text=image["summary"], image=image["image"])],
+                            source=DocumentSource.CONFLUENCE,
+                            semantic_identifier=page["title"],
+                            doc_updated_at=last_modified,
+                            primary_owners=(
+                                [BasicExpertInfo(email=author)] if author else None
+                            ),
+                            metadata=doc_metadata,
+                        )
+                    )
+
+
         return (
             doc_batch,
             unused_attachments,
@@ -707,7 +743,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=attachment_url,
-                    sections=[Section(link=attachment_url, text=attachment_content)],
+                    sections=[Section(link=attachment_url, text=attachment_content, image="")],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=attachment["title"],
                     doc_updated_at=last_updated,
