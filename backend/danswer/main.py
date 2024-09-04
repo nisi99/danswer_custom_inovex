@@ -62,7 +62,6 @@ from danswer.document_index.interfaces import DocumentIndex
 from danswer.dynamic_configs.factory import get_dynamic_config_store
 from danswer.dynamic_configs.interface import ConfigNotFoundError
 from danswer.indexing.models import IndexingSetting
-from danswer.llm.llm_initialization import load_llm_providers
 from danswer.natural_language_processing.search_nlp_models import EmbeddingModel
 from danswer.natural_language_processing.search_nlp_models import warm_up_bi_encoder
 from danswer.natural_language_processing.search_nlp_models import warm_up_cross_encoder
@@ -113,6 +112,7 @@ from danswer.tools.built_in_tools import load_builtin_tools
 from danswer.tools.built_in_tools import refresh_built_in_tools_cache
 from danswer.utils.gpu_utils import gpu_status_request
 from danswer.utils.logger import setup_logger
+from danswer.utils.telemetry import get_or_generate_uuid
 from danswer.utils.telemetry import optional_telemetry
 from danswer.utils.telemetry import RecordType
 from danswer.utils.variable_functionality import fetch_versioned_implementation
@@ -181,9 +181,6 @@ def setup_postgres(db_session: Session) -> None:
 
     logger.notice("Verifying default standard answer category exists.")
     create_initial_default_standard_answer_category(db_session)
-
-    logger.notice("Loading LLM providers from env variables")
-    load_llm_providers(db_session)
 
     logger.notice("Loading default Prompts and Personas")
     delete_old_default_personas(db_session)
@@ -327,6 +324,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # fill up Postgres connection pools
     await warm_up_connections()
+
+    # We cache this at the beginning so there is no delay in the first telemtry
+    get_or_generate_uuid()
 
     with Session(engine) as db_session:
         check_index_swap(db_session=db_session)
