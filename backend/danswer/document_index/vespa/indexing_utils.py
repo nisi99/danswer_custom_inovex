@@ -3,8 +3,8 @@ import json
 from datetime import datetime
 from datetime import timezone
 
-import httpx
-from retry import retry
+import httpx             # type: ignore
+from retry import retry  # type: ignore
 
 from danswer.connectors.cross_connector_utils.miscellaneous_utils import (
     get_experts_stores_representations,
