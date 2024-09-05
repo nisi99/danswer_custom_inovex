@@ -71,6 +71,7 @@ YQL_BASE = (
     f"{CHUNK_ID}, "
     f"{BLURB}, "
     f"{CONTENT}, "
+    f"{IMAGE}, "
     f"{SOURCE_TYPE}, "
     f"{SOURCE_LINKS}, "
     f"{SEMANTIC_IDENTIFIER}, "
