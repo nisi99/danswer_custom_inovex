@@ -7,8 +7,8 @@ from datetime import timezone
 from typing import Any
 from typing import cast
 
-import requests
-from retry import retry
+import requests          # type: ignore
+from retry import retry  # type: ignore
 
 from danswer.configs.app_configs import LOG_VESPA_TIMING_INFORMATION
 from danswer.document_index.interfaces import VespaChunkRequest

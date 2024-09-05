@@ -2,9 +2,8 @@ import traceback
 from functools import partial
 from typing import Protocol
 
-from pydantic import BaseModel
-from pydantic import ConfigDict
-from sqlalchemy.orm import Session
+from pydantic import BaseModel, ConfigDict  # type: ignore
+from sqlalchemy.orm import Session          # type: ignore
 
 from danswer.access.access import get_access_for_documents
 from danswer.access.models import DocumentAccess
@@ -210,7 +209,7 @@ def index_doc_batch_prepare(
             document.title is not None and not document.title.strip() and empty_contents
         ):
             # The title is explicitly empty ("" and not None) and the document is empty
-            # so when building the chunk text representation, it will be empty and unuseable
+            # so when building the chunk text representation, it will be empty and unusable
             logger.warning(
                 f"Skipping document with ID {document.id} as the chunks will be empty."
             )

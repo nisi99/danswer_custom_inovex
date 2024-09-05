@@ -8,9 +8,9 @@ from functools import lru_cache
 from typing import Any
 from typing import cast
 
-import bs4
+import bs4                        # type: ignore
 from atlassian import Confluence  # type:ignore
-from requests import HTTPError
+from requests import HTTPError    # type: ignore
 
 from danswer.configs.app_configs import (
     CONFLUENCE_CONNECTOR_ATTACHMENT_CHAR_COUNT_THRESHOLD,
@@ -658,7 +658,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=page_url,
-                    sections=[Section(link=page_url, text=page_text, image="")],
+                    sections=[Section(link=page_url, text=page_text, image="test")],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=page["title"],
                     doc_updated_at=last_modified,
@@ -672,24 +672,24 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             page_images = parse_images(page_html, page_id, self.confluence_client)
             logger.warning(page_images)
 
-            if page_images:
-                for image in page_images:
-                    logger.warning(image)
-                    page_url = image["url"]
+            # if page_images:
+            #     for image in page_images:
+            #         logger.warning(image)
+            #         page_url = image["url"]
 
-                    doc_batch.append(
-                        Document(
-                            id=page_url,
-                            sections=[Section(link=page_url, text=image["summary"], image=image["image"])],
-                            source=DocumentSource.CONFLUENCE,
-                            semantic_identifier=page["title"],
-                            doc_updated_at=last_modified,
-                            primary_owners=(
-                                [BasicExpertInfo(email=author)] if author else None
-                            ),
-                            metadata=doc_metadata,
-                        )
-                    )
+            #         doc_batch.append(
+            #             Document(
+            #                 id=page_url,
+            #                 sections=[Section(link=page_url, text=image["summary"], image=image["image"])],
+            #                 source=DocumentSource.CONFLUENCE,
+            #                 semantic_identifier=page["title"],
+            #                 doc_updated_at=last_modified,
+            #                 primary_owners=(
+            #                     [BasicExpertInfo(email=author)] if author else None
+            #                 ),
+            #                 metadata=doc_metadata,
+            #             )
+            #         )
 
 
         return (
@@ -743,7 +743,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=attachment_url,
-                    sections=[Section(link=attachment_url, text=attachment_content, image="")],
+                    sections=[Section(link=attachment_url, text=attachment_content, image="?")],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=attachment["title"],
                     doc_updated_at=last_updated,

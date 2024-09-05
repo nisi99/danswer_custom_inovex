@@ -10,8 +10,8 @@ from datetime import timedelta
 from typing import BinaryIO
 from typing import cast
 
-import httpx
-import requests
+import httpx     # type: ignore
+import requests  # type: ignore
 
 from danswer.configs.chat_configs import DOC_TIME_DECAY
 from danswer.configs.chat_configs import NUM_RETURNED_HITS
@@ -258,7 +258,7 @@ class VespaIndex(DocumentIndex):
                 json=update.update_request,
             )
 
-        # NOTE: using `httpx` here since `requests` doesn't support HTTP2. This is beneficient for
+        # NOTE: using `httpx` here since `requests` doesn't support HTTP2. This is beneficent for
         # indexing / updates / deletes since we have to make a large volume of requests.
         with (
             concurrent.futures.ThreadPoolExecutor(max_workers=NUM_THREADS) as executor,

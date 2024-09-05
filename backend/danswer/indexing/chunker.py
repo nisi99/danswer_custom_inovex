@@ -125,7 +125,7 @@ class Chunker:
         chunk_overlap: int = CHUNK_OVERLAP,
         mini_chunk_size: int = MINI_CHUNK_SIZE,
     ) -> None:
-        from llama_index.text_splitter import SentenceSplitter
+        from llama_index.text_splitter import SentenceSplitter  # type: ignore
 
         self.include_metadata = include_metadata
         self.chunk_token_limit = chunk_token_limit

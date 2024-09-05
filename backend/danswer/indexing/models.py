@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field  # type: ignore
 
 from danswer.access.models import DocumentAccess
 from danswer.connectors.models import Document

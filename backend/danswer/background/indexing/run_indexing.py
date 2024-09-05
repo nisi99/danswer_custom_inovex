@@ -4,7 +4,7 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session   # type: ignore
 
 from danswer.background.indexing.checkpointing import get_time_windows_for_index_attempt
 from danswer.background.indexing.tracer import DanswerTracer
@@ -48,7 +48,7 @@ def _get_connector_runner(
     """
     NOTE: `start_time` and `end_time` are only used for poll connectors
 
-    Returns an interator of document batches and whether the returned documents
+    Returns an iterator of document batches and whether the returned documents
     are the complete list of existing documents of the connector. If the task
     of type LOAD_STATE, the list will be considered complete and otherwise incomplete.
     """
