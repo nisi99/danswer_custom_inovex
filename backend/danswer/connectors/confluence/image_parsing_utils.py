@@ -15,10 +15,6 @@ api_version = os.getenv("AZURE_OPENAI_VERSION")
 deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 api_key = os.getenv("AZURE_OPENAI_API_KEY")
 
-# api_version="2024-02-01"
-# azure_endpoint="https://ogechatbotopenai-sweden.openai.azure.com/"
-# api_key="0dada7c7bbe04b09a8bc2b43f7a74b60"
-# deployment_name="gpt-4o"
 
 def encode_image(url: str):
     """Getting the base64 string."""
