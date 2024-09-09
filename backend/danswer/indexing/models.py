@@ -4,15 +4,11 @@ from pydantic import BaseModel, Field  # type: ignore
 
 from danswer.access.models import DocumentAccess
 from danswer.connectors.models import Document
-from danswer.utils.logger import setup_logger
 from shared_configs.enums import EmbeddingProvider
 from shared_configs.model_server_models import Embedding
 
 if TYPE_CHECKING:
     from danswer.db.models import SearchSettings
-
-
-logger = setup_logger()
 
 
 class ChunkEmbedding(BaseModel):
