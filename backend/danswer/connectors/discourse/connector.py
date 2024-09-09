@@ -112,7 +112,7 @@ class DiscourseConnector(PollConnector):
                     responders.append(BasicExpertInfo(display_name=responder_name))
 
             sections.append(
-                Section(link=topic_url, text=parse_html_page_basic(post["cooked"]))
+                Section(link=topic_url, text=parse_html_page_basic(post["cooked"], image="tbd"))
             )
         category_name = self.category_id_map.get(topic["category_id"])
 
