@@ -123,6 +123,7 @@ class GoogleSitesConnector(LoadConnector):
                             if path
                             else "",
                             text=parsed_html.cleaned_text,
+                            image="tbd",
                         )
                     ],
                     metadata={},

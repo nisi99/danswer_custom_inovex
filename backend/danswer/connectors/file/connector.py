@@ -140,7 +140,7 @@ def _process_file(
         Document(
             id=doc_id,
             sections=[
-                Section(link=all_metadata.get("link"), text=file_content_raw.strip())
+                Section(link=all_metadata.get("link"), text=file_content_raw.strip(), image="tbd")
             ],
             source=DocumentSource.FILE,
             semantic_identifier=file_display_name,

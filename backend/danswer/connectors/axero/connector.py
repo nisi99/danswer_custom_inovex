@@ -221,7 +221,7 @@ def _get_forums(
 def _translate_forum_to_doc(af: AxeroForum) -> Document:
     doc = Document(
         id=af.doc_id,
-        sections=[Section(link=af.link, text=reply) for reply in af.responses],
+        sections=[Section(link=af.link, text=reply, image="tbd") for reply in af.responses],
         source=DocumentSource.AXERO,
         semantic_identifier=af.title,
         doc_updated_at=af.last_update,
@@ -244,7 +244,7 @@ def _translate_content_to_doc(content: dict) -> Document:
 
     doc = Document(
         id="AXERO_" + str(content["ContentID"]),
-        sections=[Section(link=content["ContentURL"], text=page_text)],
+        sections=[Section(link=content["ContentURL"], text=page_text, image="tbd")],
         source=DocumentSource.AXERO,
         semantic_identifier=content["ContentTitle"],
         doc_updated_at=time_str_to_utc(content["DateUpdated"]),

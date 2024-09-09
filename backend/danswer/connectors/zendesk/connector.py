@@ -43,7 +43,7 @@ def _article_to_document(article: Article, content_tags: dict[str, str]) -> Docu
     return Document(
         id=f"article:{article.id}",
         sections=[
-            Section(link=article.html_url, text=parse_html_page_basic(article.body))
+            Section(link=article.html_url, text=parse_html_page_basic(article.body), image="tbd")
         ],
         source=DocumentSource.ZENDESK,
         semantic_identifier=article.title,

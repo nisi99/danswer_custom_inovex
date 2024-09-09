@@ -22,11 +22,11 @@ def test_chunk_document() -> None:
         metadata={"tags": ["tag1", "tag2"]},
         doc_updated_at=None,
         sections=[
-            Section(text=short_section_1, link="link1"),
-            Section(text=short_section_2, link="link2"),
-            Section(text=long_section, link="link3"),
-            Section(text=short_section_3, link="link4"),
-            Section(text=short_section_4, link="link5"),
+            Section(text=short_section_1, link="link1", image="tbd"),
+            Section(text=short_section_2, link="link2", image="tbd"),
+            Section(text=long_section, link="link3", image="tbd"),
+            Section(text=short_section_3, link="link4", image="tbd"),
+            Section(text=short_section_4, link="link5", image="tbd"),
         ],
     )
 

@@ -80,7 +80,7 @@ class BookstackConnector(LoadConnector, PollConnector):
         )
         return Document(
             id="book__" + str(book.get("id")),
-            sections=[Section(link=url, text=text)],
+            sections=[Section(link=url, text=text, image="tbd")],
             source=DocumentSource.BOOKSTACK,
             semantic_identifier="Book: " + title,
             title=title,
@@ -109,7 +109,7 @@ class BookstackConnector(LoadConnector, PollConnector):
         )
         return Document(
             id="chapter__" + str(chapter.get("id")),
-            sections=[Section(link=url, text=text)],
+            sections=[Section(link=url, text=text, image="tbd")],
             source=DocumentSource.BOOKSTACK,
             semantic_identifier="Chapter: " + title,
             title=title,
@@ -133,7 +133,7 @@ class BookstackConnector(LoadConnector, PollConnector):
         )
         return Document(
             id="shelf:" + str(shelf.get("id")),
-            sections=[Section(link=url, text=text)],
+            sections=[Section(link=url, text=text, image="tbd")],
             source=DocumentSource.BOOKSTACK,
             semantic_identifier="Shelf: " + title,
             title=title,
@@ -166,7 +166,7 @@ class BookstackConnector(LoadConnector, PollConnector):
         time.sleep(0.1)
         return Document(
             id="page:" + page_id,
-            sections=[Section(link=url, text=text)],
+            sections=[Section(link=url, text=text, image="tbd")],
             source=DocumentSource.BOOKSTACK,
             semantic_identifier="Page: " + str(title),
             title=str(title),

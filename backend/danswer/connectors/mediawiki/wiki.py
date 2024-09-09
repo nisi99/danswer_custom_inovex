@@ -55,6 +55,7 @@ def get_doc_from_page(
         Section(
             link=f"{page.full_url()}#" + section.heading.replace(" ", "_"),
             text=section.title + section.content,
+            image="tbd"
         )
         for section in sections_extracted.sections
     ]
@@ -62,6 +63,7 @@ def get_doc_from_page(
         Section(
             link=page.full_url(),
             text=sections_extracted.header,
+            image="tbd",
         )
     )
 

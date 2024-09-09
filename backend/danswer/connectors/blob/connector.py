@@ -201,7 +201,7 @@ class BlobStorageConnector(LoadConnector, PollConnector):
                     batch.append(
                         Document(
                             id=f"{self.bucket_type}:{self.bucket_name}:{obj['Key']}",
-                            sections=[Section(link=link, text=text)],
+                            sections=[Section(link=link, text=text, image="tbd")],
                             source=DocumentSource(self.bucket_type.value),
                             semantic_identifier=name,
                             doc_updated_at=last_modified,

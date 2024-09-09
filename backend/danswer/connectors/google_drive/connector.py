@@ -496,7 +496,7 @@ class GoogleDriveConnector(LoadConnector, PollConnector):
                         Document(
                             id=file["webViewLink"],
                             sections=[
-                                Section(link=file["webViewLink"], text=text_contents)
+                                Section(link=file["webViewLink"], text=text_contents, image="tbd")
                             ],
                             source=DocumentSource.GOOGLE_DRIVE,
                             semantic_identifier=file["name"],

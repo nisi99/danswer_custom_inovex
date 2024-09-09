@@ -93,7 +93,7 @@ class SalesforceConnector(LoadConnector, PollConnector, IdConnector):
 
         doc = Document(
             id=danswer_salesforce_id,
-            sections=[Section(link=extracted_link, text=extracted_object_text)],
+            sections=[Section(link=extracted_link, text=extracted_object_text, image="tbd")],
             source=DocumentSource.SALESFORCE,
             semantic_identifier=extracted_semantic_identifier,
             doc_updated_at=extracted_doc_updated_at,
