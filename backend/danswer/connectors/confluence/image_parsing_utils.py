@@ -6,15 +6,19 @@ from io import BytesIO
 from PIL import Image
 from openai import AzureOpenAI                           # type: ignore
 #from langchain_openai import AzureOpenAIEmbeddings       # type: ignore
+from danswer.utils.logger import setup_logger
 
+logger = setup_logger()
 
-azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT2")
-api_version = os.getenv("AZURE_OPENAI_VERSION2")
-deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT2")
-deployment_embedding = os.getenv("AZURE_OPENAI_DEPLOYMENT_EMBEDDINGS")
-api_key = os.getenv("AZURE_OPENAI_API_KEY2")
-temperature = os.getenv("TEMPERATURE")
+azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+api_version = os.getenv("AZURE_OPENAI_VERSION")
+deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+api_key = os.getenv("AZURE_OPENAI_API_KEY")
 
+# api_version="2024-02-01"
+# azure_endpoint="https://ogechatbotopenai-sweden.openai.azure.com/"
+# api_key="0dada7c7bbe04b09a8bc2b43f7a74b60"
+# deployment_name="gpt-4o"
 
 def encode_image(url: str):
     """Getting the base64 string."""
@@ -58,35 +62,29 @@ def image_summary(image_base64: str):
     )
     summary = res.choices[0].message.content
 
-    # embeddings = AzureOpenAIEmbeddings(
-    #     api_version=api_version,
-    #     openai_api_type="azure",
-    #     azure_endpoint=azure_endpoint,
-    #     azure_deployment=deployment_embedding,
-    #     api_key=api_key,
-    # )
-
-    #return summary, embedding.embed_query(summary)
     return summary
 
 
 def get_images_data(
     images_data: list,
-    soup: bs4.BeautifulSoup,
+    text,
     confluence,
     page_name: str,
     save_path: str="",
 ):
     """tbd"""
     # extract images from page
+    soup = bs4.BeautifulSoup(text, "html.parser")
     images = soup.find_all('img')
+    logger.info(f"get_images_data images = {images}")
 
     # export each image
     for i, image in enumerate(images):
         image_url = image["src"]
+        logger.info(image_url)
 
         if not image_url.startswith("https"):
-            print(f"skipped image with url {image_url} on page {page_name} due to invalid url")
+            logger.info(f"skipped image with url {image_url} on page {page_name} due to invalid url")
 
         else:
             # get image from url
@@ -97,16 +95,16 @@ def get_images_data(
             encoded_image = encode_image(response.content)
 
             # get summary
-            print(f"getting summary of image {i} of page {page_name}")
+            logger.info(f"getting summary of image {i} of page {page_name}")
             #summary, embedding = image_summary(encoded_image)
             summary = image_summary(encoded_image)
             if summary:
-                print("done")
+                logger.info("summary done")
 
             # save image to disc
             if save_path != "":
                 img.save(os.path.join(save_path, f'{page_name}_image_{i}.png'))
-                print(f'saved image {i} of page: {page_name}')
+                logger.info(f'saved image {i} of page: {page_name}')
 
             # save (meta-)data to list for further processing
             images_data.append(
@@ -115,7 +113,6 @@ def get_images_data(
                     "title": f'{page_name}_image_{i}',
                     "image": encoded_image,
                     "summary": summary,
-                    #"embedding": embedding,
                 }
             )
 

@@ -109,11 +109,9 @@ def parse_html_page(text: str, confluence_client: Confluence) -> str:
 
 def parse_images(text: str, page_id: str, confluence_client: Confluence) -> list[dict]:
     """Parse a Confluence html page and extract images."""
-    soup = bs4.BeautifulSoup(text, "html.parser")
-
-    path_to_images_folder = "/Users/denisehartmann/Documents/danswer_custom/backend/danswer/connectors/confluence/images"
+    path_to_images_folder = "/backend/danswer/connectors/confluence/images"
     images_data = []
-    images_data = get_images_data(images_data, soup, Confluence, page_id, path_to_images_folder)
+    images_data = get_images_data(images_data, text, confluence_client, page_id, path_to_images_folder)
     return images_data
 
 
@@ -212,7 +210,7 @@ class RecursiveIndexer:
         )
         try:
             origin_page = get_page_by_id(
-                self.origin_page_id, expand="body.storage.value,version"
+                self.origin_page_id, expand="body.view.value,version"
             )
             return origin_page
         except Exception as e:
@@ -277,7 +275,7 @@ class RecursiveIndexer:
                 type="page",
                 start=start_ind,
                 limit=batch_size,
-                expand="body.storage.value,version",
+                expand="body.storage.value,version,body.view.value",
             )
 
             child_pages.extend(child_page)
@@ -297,7 +295,7 @@ class RecursiveIndexer:
                         type="page",
                         start=ind,
                         limit=1,
-                        expand="body.storage.value,version",
+                        expand="body.storage.value,version,body.view.value",
                     )
                     child_pages.extend(child_page)
                 except Exception as e:
@@ -375,7 +373,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                     status=(
                         None if CONFLUENCE_CONNECTOR_INDEX_ARCHIVED_PAGES else "current"
                     ),
-                    expand="body.storage.value,version",
+                    expand="body.storage.value,version,body.view.value",
                 )
             except Exception:
                 logger.warning(
@@ -385,6 +383,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
                 view_pages: list[dict[str, Any]] = []
                 for i in range(self.batch_size):
+                    logger.debug(i)
                     try:
                         # Could be that one of the pages here failed due to this bug:
                         # https://jira.atlassian.com/browse/CONFCLOUD-76433
@@ -398,7 +397,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                                     if CONFLUENCE_CONNECTOR_INDEX_ARCHIVED_PAGES
                                     else "current"
                                 ),
-                                expand="body.storage.value,version",
+                                expand="body.storage.value,version,body.view.value",
                             )
                         )
                     except HTTPError as e:
@@ -435,6 +434,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
         pages: list[dict[str, Any]] = []
 
         try:
+            logger.warning("hier?")
             pages = (
                 _fetch_space(start_ind, self.batch_size)
                 if self.space_level_scan
@@ -658,7 +658,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=page_url,
-                    sections=[Section(link=page_url, text=page_text, image="test")],
+                    sections=[Section(link=page_url, text=page_text, image="None")],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=page["title"],
                     doc_updated_at=last_modified,
@@ -669,28 +669,25 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 )
             )
 
-            page_images = parse_images(page_html, page_id, self.confluence_client)
-            logger.warning(page_images)
+            page_images = parse_images(page["body"]["view"]["value"], page_id, self.confluence_client)
 
-            # if page_images:
-            #     for image in page_images:
-            #         logger.warning(image)
-            #         page_url = image["url"]
+            if page_images:
+                for image in page_images:
+                    page_url = image["url"]
 
-            #         doc_batch.append(
-            #             Document(
-            #                 id=page_url,
-            #                 sections=[Section(link=page_url, text=image["summary"], image=image["image"])],
-            #                 source=DocumentSource.CONFLUENCE,
-            #                 semantic_identifier=page["title"],
-            #                 doc_updated_at=last_modified,
-            #                 primary_owners=(
-            #                     [BasicExpertInfo(email=author)] if author else None
-            #                 ),
-            #                 metadata=doc_metadata,
-            #             )
-            #         )
-
+                    doc_batch.append(
+                        Document(
+                            id=page_url,
+                            sections=[Section(link=page_url, text=image["summary"], image=image["image"])],
+                            source=DocumentSource.CONFLUENCE,
+                            semantic_identifier=page["title"],
+                            doc_updated_at=last_modified,
+                            primary_owners=(
+                                [BasicExpertInfo(email=author)] if author else None
+                            ),
+                            metadata=doc_metadata,
+                        )
+                    )
 
         return (
             doc_batch,
@@ -743,7 +740,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=attachment_url,
-                    sections=[Section(link=attachment_url, text=attachment_content, image="?")],
+                    sections=[Section(link=attachment_url, text=attachment_content, image="None")],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=attachment["title"],
                     doc_updated_at=last_updated,

@@ -180,7 +180,6 @@ class Chunker:
         chunks: list[DocAwareChunk] = []
         link_offsets: dict[int, str] = {}
         chunk_text = ""
-        chunk_image = ""
 
         def _create_chunk(
             text: str,
@@ -202,18 +201,21 @@ class Chunker:
                 mini_chunk_texts=self._get_mini_chunk_texts(text),
             )
 
+
         for section in document.sections:
             section_text = section.text
             section_link_text = section.link or ""
 
             section_token_count = len(self.tokenizer.tokenize(section_text))
 
+            document_image = section.image
+
             # Large sections are considered self-contained/unique
             # Therefore, they start a new chunk and are not concatenated
             # at the end by other sections
             if section_token_count > content_token_limit:
-                if chunk_text and chunk_image:
-                    chunks.append(_create_chunk(chunk_text, chunk_image, link_offsets))
+                if chunk_text:
+                    chunks.append(_create_chunk(text=chunk_text, image=document_image, links=link_offsets))
                     link_offsets = {}
                     chunk_text = ""
 
@@ -222,7 +224,7 @@ class Chunker:
                     chunks.append(
                         _create_chunk(
                             text=split_text,
-                            image=chunk_image,
+                            image=document_image,
                             links={0: section_link_text},
                             is_continuation=(i != 0),
                         )
@@ -242,7 +244,7 @@ class Chunker:
                 chunk_text += section_text
                 link_offsets[current_offset] = section_link_text
             else:
-                chunks.append(_create_chunk(chunk_text, chunk_image, link_offsets))
+                chunks.append(_create_chunk(chunk_text, section, link_offsets))
                 link_offsets = {0: section_link_text}
                 chunk_text = section_text
 
@@ -252,9 +254,9 @@ class Chunker:
         if chunk_text.strip() or not chunks:
             chunks.append(
                 _create_chunk(
-                    chunk_text,
-                    chunk_image,
-                    link_offsets or {0: section_link_text},
+                    text=chunk_text,
+                    image=document_image,
+                    links=link_offsets or {0: section_link_text},
                 )
             )
 
