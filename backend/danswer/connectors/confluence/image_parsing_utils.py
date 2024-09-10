@@ -79,7 +79,7 @@ def get_images_data(
         image_url = image["src"]
         logger.info(image_url)
 
-        if not image_url.startswith("https"):
+        if not image_url.startswith("https") or image_url.endswith("ico"):
             logger.info(f"skipped image with url {image_url} on page {page_name} due to invalid url")
 
         else:
