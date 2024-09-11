@@ -109,9 +109,9 @@ def parse_html_page(text: str, confluence_client: Confluence) -> str:
 
 def parse_images(text: str, page_id: str, confluence_client: Confluence) -> list[dict]:
     """Parse a Confluence html page and extract images."""
-    path_to_images_folder = "/backend/danswer/connectors/confluence/images"
+    path = ""
     images_data = []
-    images_data = get_images_data(images_data, text, confluence_client, page_id, path_to_images_folder)
+    images_data = get_images_data(images_data, text, confluence_client, page_id, path)
     return images_data
 
 
@@ -434,7 +434,6 @@ class ConfluenceConnector(LoadConnector, PollConnector):
         pages: list[dict[str, Any]] = []
 
         try:
-            logger.warning("hier?")
             pages = (
                 _fetch_space(start_ind, self.batch_size)
                 if self.space_level_scan
