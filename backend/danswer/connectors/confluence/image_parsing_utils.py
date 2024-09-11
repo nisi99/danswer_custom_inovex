@@ -1,7 +1,9 @@
 import base64
 import bs4 # type: ignore
 import os
+import requests
 
+from requests.exceptions import SSLError
 from io import BytesIO
 from PIL import Image
 from openai import AzureOpenAI                           # type: ignore
@@ -72,17 +74,16 @@ def get_images_data(
     # extract images from page
     soup = bs4.BeautifulSoup(text, "html.parser")
     images = soup.find_all('img')
-    logger.info(f"get_images_data images = {images}")
 
     # export each image
     for i, image in enumerate(images):
         image_url = image["src"]
         logger.info(image_url)
 
-        if not image_url.startswith("https") or image_url.endswith("ico"):
-            logger.info(f"skipped image with url {image_url} on page {page_name} due to invalid url")
+        # if not image_url.startswith("https") or image_url.endswith("ico") or "portal.neusta" in image_url:
+        #     logger.info(f"skipped image with url {image_url} on page {page_name} due to invalid url")
 
-        else:
+        try:
             # get image from url
             response = confluence.request(path=image_url, absolute=True)
             img = Image.open(BytesIO(response.content))
@@ -98,7 +99,7 @@ def get_images_data(
                 logger.info("summary done")
 
             # save image to disc
-            if save_path != "":
+            if save_path != "None":
                 img.save(os.path.join(save_path, f'{page_name}_image_{i}.png'))
                 logger.info(f'saved image {i} of page: {page_name}')
 
@@ -111,5 +112,12 @@ def get_images_data(
                     "summary": summary,
                 }
             )
+
+        except SSLError as e:
+            logger.warning(f"SSL Error: {e}")
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Request Exception: {e}")
+
 
     return images_data
