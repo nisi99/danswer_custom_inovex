@@ -68,7 +68,7 @@ def get_images_data(
     text,
     confluence,
     page_name: str,
-    save_path: str="",
+    save_path: str="None",
 ):
     """tbd"""
     # extract images from page

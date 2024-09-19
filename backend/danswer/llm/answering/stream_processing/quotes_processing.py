@@ -198,6 +198,9 @@ def _extract_quotes_from_completed_token_stream(
     answer, quotes = process_answer(model_output, context_docs, is_json_prompt)
     if answer:
         logger.notice(answer)
+        for chunk in context_docs:
+            logger.warning(f"retrieved chunk = {chunk["content"]}")
+        #logger.notice(f"context_docs: {context_docs}")
     elif model_output:
         logger.warning("Answer extraction from model output failed.")
 
