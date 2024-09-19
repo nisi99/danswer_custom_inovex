@@ -228,6 +228,9 @@ def _get_chunks_via_visit_api(
         else:
             break  # Exit loop if no continuation token
 
+    logger.warning("!!!")
+    for chunk in document_chunks:
+        logger.warning(chunk["content"])
     return document_chunks
 
 
