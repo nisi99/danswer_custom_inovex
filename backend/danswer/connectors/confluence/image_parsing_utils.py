@@ -2,6 +2,7 @@ import base64
 import bs4 # type: ignore
 import os
 import requests
+from sys import getsizeof
 
 from requests.exceptions import SSLError
 from io import BytesIO
@@ -63,6 +64,23 @@ def image_summary(image_base64: str):
     return summary
 
 
+def resize_image_if_needed(image_data, max_size_mb=20):
+    """Resize image if it's larger than the specified max size in MB."""
+    max_size_bytes = max_size_mb * 1024 * 1024
+    if len(image_data) > max_size_bytes:
+        with Image.open(BytesIO(image_data)) as img:
+            logger.warning(f"resizing image...")
+            # Reduce dimensions for better size reduction
+            img.thumbnail((800, 800), Image.LANCZOS)
+            output = BytesIO()
+            # Save with lower quality for compression
+            img.save(output, format='JPEG', quality=70)  # Reduce quality for better compression
+            resized_data = output.getvalue()
+            return resized_data
+    return image_data
+
+
+
 def get_images_data(
     images_data: list,
     text,
@@ -83,13 +101,16 @@ def get_images_data(
         # if not image_url.startswith("https") or image_url.endswith("ico") or "portal.neusta" in image_url:
         #     logger.info(f"skipped image with url {image_url} on page {page_name} due to invalid url")
 
+
         try:
             # get image from url
             response = confluence.request(path=image_url, absolute=True)
-            img = Image.open(BytesIO(response.content))
+
+            # Resize image if it's larger than 20MB
+            image_data = resize_image_if_needed(response.content)
 
             # encode image (for llm)
-            encoded_image = encode_image(response.content)
+            encoded_image = encode_image(image_data)
 
             # get summary
             logger.info(f"getting summary of image {i} of page {page_name}")
@@ -100,6 +121,7 @@ def get_images_data(
 
             # save image to disc
             if save_path != "None":
+                img = Image.open(BytesIO(response.content))
                 img.save(os.path.join(save_path, f'{page_name}_image_{i}.png'))
                 logger.info(f'saved image {i} of page: {page_name}')
 
