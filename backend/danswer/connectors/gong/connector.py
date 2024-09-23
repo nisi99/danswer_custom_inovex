@@ -243,7 +243,7 @@ class GongConnector(LoadConnector, PollConnector):
                     Document(
                         id=call_id,
                         sections=[
-                            Section(link=call_metadata["url"], text=transcript_text, image="tbd")
+                            Section(link=call_metadata["url"], text=transcript_text)
                         ],
                         source=DocumentSource.GONG,
                         # Should not ever be Untitled as a call cannot be made without a Title

@@ -110,8 +110,7 @@ def parse_html_page(text: str, confluence_client: Confluence) -> str:
 def parse_images(text: str, page_id: str, confluence_client: Confluence) -> list[dict]:
     """Parse a Confluence html page and extract images."""
     #path = ""
-    images_data = []
-    images_data = get_images_data(images_data, text, confluence_client, page_id)
+    images_data = get_images_data(text, confluence_client, page_id)
     return images_data
 
 

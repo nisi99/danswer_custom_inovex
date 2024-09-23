@@ -198,7 +198,7 @@ class SlabConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=post_id,  # can't be url as this changes with the post title
-                    sections=[Section(link=page_url, text=content_text, image="tbd")],
+                    sections=[Section(link=page_url, text=content_text)],
                     source=DocumentSource.SLAB,
                     semantic_identifier=post["title"],
                     metadata={},

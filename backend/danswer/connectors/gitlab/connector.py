@@ -54,7 +54,7 @@ def get_author(author: Any) -> BasicExpertInfo:
 def _convert_merge_request_to_document(mr: Any) -> Document:
     doc = Document(
         id=mr.web_url,
-        sections=[Section(link=mr.web_url, text=mr.description or "", image="tbd")],
+        sections=[Section(link=mr.web_url, text=mr.description or "")],
         source=DocumentSource.GITLAB,
         semantic_identifier=mr.title,
         # updated_at is UTC time but is timezone unaware, explicitly add UTC
@@ -70,7 +70,7 @@ def _convert_merge_request_to_document(mr: Any) -> Document:
 def _convert_issue_to_document(issue: Any) -> Document:
     doc = Document(
         id=issue.web_url,
-        sections=[Section(link=issue.web_url, text=issue.description or "", image="tbd")],
+        sections=[Section(link=issue.web_url, text=issue.description or "")],
         source=DocumentSource.GITLAB,
         semantic_identifier=issue.title,
         # updated_at is UTC time but is timezone unaware, explicitly add UTC
@@ -97,7 +97,7 @@ def _convert_code_to_document(
     file_url = f"{url}/{projectOwner}/{projectName}/-/blob/master/{file['path']}"  # Construct the file URL
     doc = Document(
         id=file["id"],
-        sections=[Section(link=file_url, text=file_content, image="tbd")],
+        sections=[Section(link=file_url, text=file_content)],
         source=DocumentSource.GITLAB,
         semantic_identifier=file["name"],
         doc_updated_at=datetime.now().replace(

@@ -175,7 +175,7 @@ def fetch_jira_issues_batch(
         doc_batch.append(
             Document(
                 id=page_url,
-                sections=[Section(link=page_url, text=semantic_rep, image="tbd")],
+                sections=[Section(link=page_url, text=semantic_rep)],
                 source=DocumentSource.JIRA,
                 semantic_identifier=jira.fields.summary,
                 doc_updated_at=time_str_to_utc(jira.fields.updated),
