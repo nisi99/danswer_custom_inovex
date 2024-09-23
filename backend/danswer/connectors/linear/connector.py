@@ -175,13 +175,13 @@ class LinearConnector(LoadConnector, PollConnector):
                         sections=[
                             Section(
                                 link=node["url"],
-                                text=node["description"] or ""
+                                text=node["description"] or "",
                             )
                         ]
                         + [
                             Section(
                                 link=node["url"],
-                                text=comment["body"] or ""
+                                text=comment["body"] or "",
                             )
                             for comment in node["comments"]["nodes"]
                         ],

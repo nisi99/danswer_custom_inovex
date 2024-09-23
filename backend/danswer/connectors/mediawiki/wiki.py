@@ -54,7 +54,7 @@ def get_doc_from_page(
     sections = [
         Section(
             link=f"{page.full_url()}#" + section.heading.replace(" ", "_"),
-            text=section.title + section.content
+            text=section.title + section.content,
         )
         for section in sections_extracted.sections
     ]
