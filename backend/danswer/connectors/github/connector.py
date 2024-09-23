@@ -83,7 +83,7 @@ def _batch_github_objects(
 def _convert_pr_to_document(pull_request: PullRequest) -> Document:
     return Document(
         id=pull_request.html_url,
-        sections=[Section(link=pull_request.html_url, text=pull_request.body or "", image="tbd")],
+        sections=[Section(link=pull_request.html_url, text=pull_request.body or "")],
         source=DocumentSource.GITHUB,
         semantic_identifier=pull_request.title,
         # updated_at is UTC time but is timezone unaware, explicitly add UTC
@@ -105,7 +105,7 @@ def _fetch_issue_comments(issue: Issue) -> str:
 def _convert_issue_to_document(issue: Issue) -> Document:
     return Document(
         id=issue.html_url,
-        sections=[Section(link=issue.html_url, text=issue.body or "", image="tbd")],
+        sections=[Section(link=issue.html_url, text=issue.body or "")],
         source=DocumentSource.GITHUB,
         semantic_identifier=issue.title,
         # updated_at is UTC time but is timezone unaware

@@ -106,7 +106,7 @@ class HubSpotConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=ticket.id,
-                    sections=[Section(link=link, text=content_text, image="tbd")],
+                    sections=[Section(link=link, text=content_text)],
                     source=DocumentSource.HUBSPOT,
                     semantic_identifier=title,
                     # Is already in tzutc, just replacing the timezone format

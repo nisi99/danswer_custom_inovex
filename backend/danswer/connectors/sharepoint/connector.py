@@ -48,7 +48,7 @@ def _convert_driveitem_to_document(
 
     doc = Document(
         id=driveitem.id,
-        sections=[Section(link=driveitem.web_url, text=file_text, image="tbd")],
+        sections=[Section(link=driveitem.web_url, text=file_text)],
         source=DocumentSource.SHAREPOINT,
         semantic_identifier=driveitem.name,
         doc_updated_at=driveitem.last_modified_datetime.replace(tzinfo=timezone.utc),

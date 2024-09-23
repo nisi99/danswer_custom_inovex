@@ -183,9 +183,9 @@ class Chunker:
 
         def _create_chunk(
             text: str,
-            image: str,
             links: dict[int, str],
             is_continuation: bool = False,
+            image: str | None = None,
         ) -> DocAwareChunk:
             return DocAwareChunk(
                 source_document=document,
@@ -244,7 +244,7 @@ class Chunker:
                 chunk_text += section_text
                 link_offsets[current_offset] = section_link_text
             else:
-                chunks.append(_create_chunk(chunk_text, section, link_offsets))
+                chunks.append(_create_chunk(text=chunk_text, image=document_image, links=link_offsets))
                 link_offsets = {0: section_link_text}
                 chunk_text = section_text
 

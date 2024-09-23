@@ -176,14 +176,12 @@ class LinearConnector(LoadConnector, PollConnector):
                             Section(
                                 link=node["url"],
                                 text=node["description"] or "",
-                                image="tbd"
                             )
                         ]
                         + [
                             Section(
                                 link=node["url"],
                                 text=comment["body"] or "",
-                                image="tbd"
                             )
                             for comment in node["comments"]["nodes"]
                         ],

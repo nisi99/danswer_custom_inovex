@@ -104,7 +104,7 @@ class DropboxConnector(LoadConnector, PollConnector):
                         batch.append(
                             Document(
                                 id=f"doc:{entry.id}",
-                                sections=[Section(link=link, text=text, image="tbd")],
+                                sections=[Section(link=link, text=text)],
                                 source=DocumentSource.DROPBOX,
                                 semantic_identifier=entry.name,
                                 doc_updated_at=modified_time,

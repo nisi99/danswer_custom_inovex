@@ -4,6 +4,7 @@ import os
 import requests
 from sys import getsizeof
 
+from atlassian import Confluence
 from requests.exceptions import SSLError
 from io import BytesIO
 from PIL import Image
@@ -13,27 +14,19 @@ from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
 
-azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-api_version = os.getenv("AZURE_OPENAI_VERSION")
-deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-api_key = os.getenv("AZURE_OPENAI_API_KEY")
+deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 
-
-def encode_image(url: str):
+def encode_image(url: bytes) -> str:
     """Getting the base64 string."""
     base64_encoded_data = base64.b64encode(url).decode("utf-8")
 
     return f"data:image/jpeg;base64,{base64_encoded_data}"
 
 
-def image_summary(image_base64: str):
+def image_summary(image_base64: str) -> str | None:
     """Use ChatGPT to generate a summary of an image."""
     # initialize the Azure OpenAI Model
-    model = AzureOpenAI(
-        azure_endpoint=azure_endpoint,
-        api_key=api_key,
-        api_version=api_version,
-    )
+    model = AzureOpenAI()
 
     prompt = """
         Du bist ein Assistent für die Zusammenfassung von Bildern für das Retrieval.
@@ -64,14 +57,14 @@ def image_summary(image_base64: str):
     return summary
 
 
-def resize_image_if_needed(image_data, max_size_mb=20):
+def resize_image_if_needed(image_data: bytes, max_size_mb: int = 20) -> bytes:
     """Resize image if it's larger than the specified max size in MB."""
     max_size_bytes = max_size_mb * 1024 * 1024
     if len(image_data) > max_size_bytes:
         with Image.open(BytesIO(image_data)) as img:
             logger.warning(f"resizing image...")
             # Reduce dimensions for better size reduction
-            img.thumbnail((800, 800), Image.LANCZOS)
+            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
             output = BytesIO()
             # Save with lower quality for compression
             img.save(output, format='JPEG', quality=70)  # Reduce quality for better compression
@@ -82,16 +75,16 @@ def resize_image_if_needed(image_data, max_size_mb=20):
 
 
 def get_images_data(
-    images_data: list,
-    text,
-    confluence,
+    text: str,
+    confluence: Confluence,
     page_name: str,
     save_path: str="None",
-):
+) -> list:
     """tbd"""
     # extract images from page
     soup = bs4.BeautifulSoup(text, "html.parser")
     images = soup.find_all('img')
+    images_data: list = []
 
     # export each image
     for i, image in enumerate(images):

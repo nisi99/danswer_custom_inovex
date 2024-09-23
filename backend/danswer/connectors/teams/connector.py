@@ -160,7 +160,7 @@ def _convert_thread_to_document(
 
     doc = Document(
         id=post_id,
-        sections=[Section(link=web_url, text=thread_text, image="tbd")],
+        sections=[Section(link=web_url, text=thread_text)],
         source=DocumentSource.TEAMS,
         semantic_identifier=semantic_string,
         title="",  # teams threads don't really have a "title"

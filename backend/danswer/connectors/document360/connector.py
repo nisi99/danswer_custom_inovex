@@ -158,7 +158,7 @@ class Document360Connector(LoadConnector, PollConnector):
 
             document = Document(
                 id=article_details["id"],
-                sections=[Section(link=doc_link, text=doc_text, image="tbd")],
+                sections=[Section(link=doc_link, text=doc_text)],
                 source=DocumentSource.DOCUMENT360,
                 semantic_identifier=article_details["title"],
                 doc_updated_at=updated_at,

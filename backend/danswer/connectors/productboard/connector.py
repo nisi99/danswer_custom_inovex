@@ -113,7 +113,6 @@ class ProductboardConnector(PollConnector):
                     Section(
                         link=feature["links"]["html"],
                         text=self._parse_description_html(feature["description"]),
-                        image="tbd",
                     )
                 ],
                 semantic_identifier=feature["name"],
@@ -137,7 +136,6 @@ class ProductboardConnector(PollConnector):
                     Section(
                         link=component["links"]["html"],
                         text=self._parse_description_html(component["description"]),
-                        image="tbd",
                     )
                 ],
                 semantic_identifier=component["name"],
@@ -164,7 +162,6 @@ class ProductboardConnector(PollConnector):
                     Section(
                         link=product["links"]["html"],
                         text=self._parse_description_html(product["description"]),
-                        image="tbd",
                     )
                 ],
                 semantic_identifier=product["name"],
@@ -195,7 +192,6 @@ class ProductboardConnector(PollConnector):
                     Section(
                         link=objective["links"]["html"],
                         text=self._parse_description_html(objective["description"]),
-                        image="tbd",
                     )
                 ],
                 semantic_identifier=objective["name"],

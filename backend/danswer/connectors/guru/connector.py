@@ -119,7 +119,7 @@ class GuruConnector(LoadConnector, PollConnector):
                 doc_batch.append(
                     Document(
                         id=card["id"],
-                        sections=[Section(link=link, text=content_text, image="tbd")],
+                        sections=[Section(link=link, text=content_text)],
                         source=DocumentSource.GURU,
                         semantic_identifier=title,
                         doc_updated_at=latest_time,
