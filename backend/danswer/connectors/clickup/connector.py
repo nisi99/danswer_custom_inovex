@@ -69,7 +69,6 @@ class ClickupConnector(LoadConnector, PollConnector):
             Section(
                 link=f'https://app.clickup.com/t/{task_id}?comment={comment_dict["id"]}',
                 text=comment_dict["comment_text"],
-                image="tbd",
             )
             for comment_dict in response["comments"]
         ]
@@ -141,7 +140,6 @@ class ClickupConnector(LoadConnector, PollConnector):
                                 if "markdown_description" in task
                                 else task["description"]
                             ),
-                            image="tbd",
                         )
                     ],
                     metadata={

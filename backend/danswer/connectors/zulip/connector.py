@@ -89,7 +89,6 @@ class ZulipConnector(LoadConnector, PollConnector):
                 Section(
                     link=self._message_to_narrow_link(message),
                     text=text,
-                    image="tbd",
                 )
             ],
             source=DocumentSource.ZULIP,

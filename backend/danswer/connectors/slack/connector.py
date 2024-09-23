@@ -190,7 +190,6 @@ def thread_to_doc(
                     event=m, workspace=workspace, channel_id=channel_id
                 ),
                 text=slack_cleaner.index_clean(cast(str, m["text"])),
-                image="tbd",
             )
             for m in thread
         ],

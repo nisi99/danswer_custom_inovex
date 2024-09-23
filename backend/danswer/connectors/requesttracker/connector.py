@@ -55,7 +55,6 @@ class RequestTrackerConnector(PollConnector):
                             for (k, v) in tx.items()
                         ]
                     ),
-                    image="tbd",
                 )
             )
         return Sections

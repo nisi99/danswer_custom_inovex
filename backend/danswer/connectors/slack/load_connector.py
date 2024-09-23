@@ -72,7 +72,6 @@ class SlackLoadConnector(LoadConnector):
                                 channel_id=channel["id"],
                             ),
                             text=slack_event["text"],
-                            image="tbd",
                         )
                     ],
                     source=matching_doc.source,
@@ -92,7 +91,6 @@ class SlackLoadConnector(LoadConnector):
                             channel_id=channel["id"],
                         ),
                         text=slack_event["text"],
-                        image="tbd",
                     )
                 ],
                 source=DocumentSource.SLACK,
