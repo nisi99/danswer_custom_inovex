@@ -11,7 +11,7 @@ from danswer.llm.answering.models import PromptConfig
 from danswer.llm.factory import get_llms_for_persona
 from danswer.llm.factory import get_main_llm_from_tuple
 from danswer.llm.interfaces import LLMConfig
-from danswer.llm.utils import build_content_with_imgs
+from danswer.llm.utils import build_content_with_imgs, build_content_with_imgs_from_chunk
 from danswer.llm.utils import check_number_of_tokens
 from danswer.llm.utils import get_max_input_tokens
 from danswer.prompts.chat_prompts import REQUIRE_CITATION_STATEMENT
@@ -29,6 +29,10 @@ from danswer.prompts.token_counts import CITATION_REMINDER_TOKEN_CNT
 from danswer.prompts.token_counts import CITATION_STATEMENT_TOKEN_CNT
 from danswer.prompts.token_counts import LANGUAGE_HINT_TOKEN_CNT
 from danswer.search.models import InferenceChunk
+from danswer.utils.logger import setup_logger
+
+
+logger = setup_logger()
 
 
 def get_prompt_tokens(prompt_config: PromptConfig) -> int:
@@ -151,6 +155,15 @@ def build_citations_user_message(
             user_query=question,
             history_block=history_message,
         )
+
+        # if top chunk contains image --> add image to user prompt
+        image = context_docs[0].metadata["image"]
+        if image.startswith("data:image/jpeg;base64,"):
+            user_msg = HumanMessage(
+                content=build_content_with_imgs_from_chunk(user_prompt, image)
+            )
+            logger.info("Retrieved chunk contains an image -> added image to user prompt.")
+
     else:
         # if no context docs provided, assume we're in the tool calling flow
         user_prompt = CITATIONS_PROMPT_FOR_TOOL_CALLING.format(

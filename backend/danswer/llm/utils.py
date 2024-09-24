@@ -201,6 +201,31 @@ def build_content_with_imgs(
     )
 
 
+def build_content_with_imgs_from_chunk(
+    message: str,
+    image: str,
+) -> str | list[str | dict[str, Any]]:  # matching Langchain's BaseMessage content type
+    img = image[22:]
+
+    return cast(
+        list[str | dict[str, Any]],
+        [
+            {
+                "type": "text",
+                "text": message,
+            },
+        ]
+        + [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{img}",
+                },
+            },
+        ]
+    )
+
+
 def dict_based_prompt_to_langchain_prompt(
     messages: list[dict[str, str]]
 ) -> list[BaseMessage]:

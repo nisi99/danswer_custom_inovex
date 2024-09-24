@@ -13,7 +13,9 @@ from danswer.prompts.chat_prompts import ADDITIONAL_INFO
 from danswer.prompts.chat_prompts import CITATION_REMINDER
 from danswer.prompts.constants import CODE_BLOCK_PAT
 from danswer.search.models import InferenceChunk
+from danswer.utils.logger import setup_logger
 
+logger = setup_logger()
 
 MOST_BASIC_PROMPT = "You are a helpful AI assistant."
 DANSWER_DATETIME_REPLACEMENT = "DANSWER_DATETIME_REPLACEMENT"
@@ -96,11 +98,12 @@ def build_doc_context_str(
         context_str += f"Source: {clean_up_source(source_type)}\n"
 
         for k, v in metadata_dict.items():
-            if isinstance(v, list):
-                v_str = ", ".join(v)
-                context_str += f"{k.capitalize()}: {v_str}\n"
-            else:
-                context_str += f"{k.capitalize()}: {v}\n"
+            if k != "image":  # ignore image field -> to long to display ad tag...
+                if isinstance(v, list):
+                    v_str = ", ".join(v)
+                    context_str += f"{k.capitalize()}: {v_str}\n"
+                else:
+                    context_str += f"{k.capitalize()}: {v}\n"
 
         if updated_at:
             update_str = updated_at.strftime("%B %d, %Y %H:%M")
