@@ -23,7 +23,6 @@ from danswer.document_index.vespa_constants import BLURB
 from danswer.document_index.vespa_constants import BOOST
 from danswer.document_index.vespa_constants import CHUNK_ID
 from danswer.document_index.vespa_constants import CONTENT
-from danswer.document_index.vespa_constants import IMAGE
 from danswer.document_index.vespa_constants import CONTENT_SUMMARY
 from danswer.document_index.vespa_constants import DOC_UPDATED_AT
 from danswer.document_index.vespa_constants import DOCUMENT_ID
@@ -126,7 +125,6 @@ def _vespa_hit_to_inference_chunk(
         chunk_id=fields[CHUNK_ID],
         blurb=fields.get(BLURB, ""),  # Unused
         content=fields[CONTENT],  # Includes extra title prefix and metadata suffix
-        image=fields[IMAGE],
         source_links=source_links_dict or {0: ""},
         section_continuation=fields[SECTION_CONTINUATION],
         document_id=fields[DOCUMENT_ID],

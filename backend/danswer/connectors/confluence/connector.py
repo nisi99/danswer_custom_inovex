@@ -656,7 +656,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=page_url,
-                    sections=[Section(link=page_url, text=page_text, image="None")],
+                    sections=[Section(link=page_url, text=page_text)],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=page["title"],
                     doc_updated_at=last_modified,
@@ -667,16 +667,20 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 )
             )
 
+            # get images from page
             page_images = parse_images(page["body"]["view"]["value"], page_id, self.confluence_client)
 
+            # if page contains any images: 
+            # add each image and its caption to doc/chunks
             if page_images:
                 for image in page_images:
-                    page_url = image["url"]
+                    # append image to metadata
+                    doc_metadata["image"] = image["image"]
 
                     doc_batch.append(
                         Document(
                             id=page_url,
-                            sections=[Section(link=page_url, text=image["summary"], image=image["image"])],
+                            sections=[Section(link=image["url"], text=image["summary"])],
                             source=DocumentSource.CONFLUENCE,
                             semantic_identifier=page["title"],
                             doc_updated_at=last_modified,
