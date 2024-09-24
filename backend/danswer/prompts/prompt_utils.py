@@ -98,7 +98,7 @@ def build_doc_context_str(
         context_str += f"Source: {clean_up_source(source_type)}\n"
 
         for k, v in metadata_dict.items():
-            if k != "image":  # ignore image field -> to long to display ad tag...
+            if k != "image":  # ignore image field -> to long to display as tag...
                 if isinstance(v, list):
                     v_str = ", ".join(v)
                     context_str += f"{k.capitalize()}: {v_str}\n"

@@ -108,6 +108,7 @@ services:
         - AZURE_OPENAI_API_KEY
         - AZURE_OPENAI_DEPLOYMENT
         - AZURE_OPENAI_VERSION
+        - OPENAI_API_VERSION
     command: /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
     depends_on:
       - relational_db
@@ -195,6 +196,7 @@ services:
       - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
       - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-}
       - AZURE_OPENAI_VERSION=${AZURE_OPENAI_VERSION:-}
+      - OPENAI_API_VERSION=${OPENAI_API_VERSION:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     logging:
