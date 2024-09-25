@@ -157,7 +157,6 @@ def build_citations_user_message(
         )
 
         # if top chunk contains image --> add image to user prompt
-        logger.warning(context_docs[0].metadata.keys())
         if "image" in context_docs[0].metadata.keys():
             image = context_docs[0].metadata["image"]
             if image.startswith("data:image/jpeg;base64,"):

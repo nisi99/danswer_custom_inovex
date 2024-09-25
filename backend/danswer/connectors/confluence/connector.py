@@ -679,7 +679,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
                     doc_batch.append(
                         Document(
-                            id=page_url,
+                            id=image["url"],
                             sections=[Section(link=image["url"], text=image["summary"])],
                             source=DocumentSource.CONFLUENCE,
                             semantic_identifier=page["title"],
