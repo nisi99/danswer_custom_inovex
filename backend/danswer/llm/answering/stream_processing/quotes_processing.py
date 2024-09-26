@@ -23,7 +23,7 @@ from danswer.utils.text_processing import clean_model_quote
 from danswer.utils.text_processing import clean_up_code_blocks
 from danswer.utils.text_processing import extract_embedded_json
 from danswer.utils.text_processing import shared_precompare_cleanup
-from danswer.prompts.prompt_utils import build_complete_context_str
+from danswer.prompts.prompt_utils import build_complete_context_str_eval_format
 
 
 logger = setup_logger()
@@ -172,7 +172,7 @@ def process_answer(
         return DanswerAnswer(answer=None), DanswerQuotes(quotes=[])
 
     logger.notice(f"Answer: {answer}")
-    context_docs_str = build_complete_context_str(docs)
+    context_docs_str = build_complete_context_str_eval_format(docs)
     logger.notice(f"retrieved contexts to answer question: \n{context_docs_str}")
 
     if not quote_strings:

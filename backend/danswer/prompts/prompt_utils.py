@@ -130,6 +130,13 @@ def build_complete_context_str(
 
     return context_str.strip()
 
+def build_complete_context_str_eval_format(
+    context_docs: Sequence[LlmDoc | InferenceChunk],
+) -> str:
+    context_strs = []
+    for doc in context_docs:
+        context_strs.append(doc.content)
+    return context_strs
 
 _PER_MESSAGE_TOKEN_BUFFER = 7
 
