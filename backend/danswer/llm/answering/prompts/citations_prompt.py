@@ -146,6 +146,7 @@ def build_citations_user_message(
 
     if context_docs:
         context_docs_str = build_complete_context_str(context_docs)
+        logger.info(f"retrieved contexts to answer question: \n{context_docs_str}")
         optional_ignore = "" if all_doc_useful else DEFAULT_IGNORE_STATEMENT
 
         user_prompt = CITATIONS_PROMPT.format(
