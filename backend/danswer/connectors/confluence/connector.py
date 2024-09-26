@@ -667,29 +667,29 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 )
             )
 
-            # get images from page
-            page_images = parse_images(page["body"]["view"]["value"], page_id, self.confluence_client)
+            # # get images from page
+            # page_images = parse_images(page["body"]["view"]["value"], page_id, self.confluence_client)
 
-            # if page contains any images: 
-            # add each image and its caption to doc/chunks
-            if page_images:
-                for image in page_images:
-                    # append image to metadata
-                    doc_metadata["image"] = image["image"]
+            # # if page contains any images: 
+            # # add each image and its caption to doc/chunks
+            # if page_images:
+            #     for image in page_images:
+            #         # append image to metadata
+            #         doc_metadata["image"] = image["image"]
 
-                    doc_batch.append(
-                        Document(
-                            id=image["url"],
-                            sections=[Section(link=image["url"], text=image["summary"])],
-                            source=DocumentSource.CONFLUENCE,
-                            semantic_identifier=page["title"],
-                            doc_updated_at=last_modified,
-                            primary_owners=(
-                                [BasicExpertInfo(email=author)] if author else None
-                            ),
-                            metadata=doc_metadata,
-                        )
-                    )
+            #         doc_batch.append(
+            #             Document(
+            #                 id=image["url"],
+            #                 sections=[Section(link=image["url"], text=image["summary"])],
+            #                 source=DocumentSource.CONFLUENCE,
+            #                 semantic_identifier=page["title"],
+            #                 doc_updated_at=last_modified,
+            #                 primary_owners=(
+            #                     [BasicExpertInfo(email=author)] if author else None
+            #                 ),
+            #                 metadata=doc_metadata,
+            #             )
+            #         )
 
         return (
             doc_batch,
