@@ -171,6 +171,8 @@ def process_answer(
         return DanswerAnswer(answer=None), DanswerQuotes(quotes=[])
 
     logger.notice(f"Answer: {answer}")
+    logger.notice(f"retrieved contexts to answer question: \n{docs}")
+
     if not quote_strings:
         logger.debug("No quotes extracted from raw output")
         return DanswerAnswer(answer=answer), DanswerQuotes(quotes=[])
