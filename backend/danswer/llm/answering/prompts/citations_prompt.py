@@ -151,16 +151,22 @@ def build_citations_user_message(
     if context_docs:
         # if top chunk contains image --> add image to user prompt
         first_context_doc = context_docs[0]
+        logger.info(f"first_context_doc = {first_context_doc}")
 
         if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
             if "image" in first_context_doc.metadata.keys():
                 image = first_context_doc.metadata["image"]
                 prefix = "data:image/jpeg;base64,"
+
                 if image.startswith(prefix):
+                    # remove prefix and decode image
+                    base64_image = image.removeprefix(prefix)
+                    image_decoded = base64.b64decode(base64_image)
+
                     # add image as chat file
                     image = InMemoryChatFile(
                         file_id=first_context_doc.document_id,
-                        content=base64.b64decode(image.removeprefix(prefix)),
+                        content=image_decoded,
                         file_type=ChatFileType.IMAGE
                     )
                     files.append(image)
@@ -169,6 +175,7 @@ def build_citations_user_message(
                     context_docs = context_docs[1:]
 
                     logger.info("Retrieved chunk contains an image -> added image to user prompt.")
+                    logger.notice(f"used image to answer question: \n{first_context_doc.document_id}")
 
         context_docs_str = build_complete_context_str(context_docs)
         logger.notice(
