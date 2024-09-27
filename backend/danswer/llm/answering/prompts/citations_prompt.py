@@ -1,3 +1,5 @@
+import base64
+
 from langchain.schema.messages import HumanMessage
 from langchain.schema.messages import SystemMessage
 
@@ -6,6 +8,7 @@ from danswer.configs.model_configs import GEN_AI_SINGLE_USER_MESSAGE_EXPECTED_MA
 from danswer.db.models import Persona
 from danswer.db.persona import get_default_prompt__read_only
 from danswer.db.search_settings import get_multilingual_expansion
+from danswer.file_store.models import ChatFileType
 from danswer.file_store.utils import InMemoryChatFile
 from danswer.llm.answering.models import PromptConfig
 from danswer.llm.factory import get_llms_for_persona
@@ -158,12 +161,16 @@ def build_citations_user_message(
         )
 
         # if top chunk contains image --> add image to user prompt
-        if "image" in context_docs[0].metadata.keys():
-            image = context_docs[0].metadata["image"]
+        first_context_doc = context_docs[0]
+        if "image" in first_context_doc.metadata.keys():
+            image = first_context_doc.metadata["image"]
             if image.startswith("data:image/jpeg;base64,"):
-                user_msg = HumanMessage(
-                    content=build_content_with_imgs_from_chunk(user_prompt, image)
+                image = InMemoryChatFile(
+                    file_id=first_context_doc.document_id,
+                    content=base64.b64decode(image),
+                    file_type=ChatFileType.IMAGE
                 )
+                files.append(image)
                 logger.info("Retrieved chunk contains an image -> added image to user prompt.")
 
     else:
