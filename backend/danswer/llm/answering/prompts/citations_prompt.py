@@ -158,24 +158,23 @@ def build_citations_user_message(
                 image = first_context_doc.metadata["image"]
                 prefix = "data:image/jpeg;base64,"
 
-                if image.startswith(prefix):
-                    # remove prefix and decode image
-                    base64_image = image.removeprefix(prefix)
-                    image_decoded = base64.b64decode(base64_image)
+                # remove prefix and decode image
+                base64_image = image.removeprefix(prefix)
+                image_decoded = base64.b64decode(base64_image)
 
-                    # add image as chat file
-                    image = InMemoryChatFile(
-                        file_id=first_context_doc.document_id,
-                        content=image_decoded,
-                        file_type=ChatFileType.IMAGE
-                    )
-                    files.append(image)
+                # add image as chat file
+                image = InMemoryChatFile(
+                    file_id=first_context_doc.document_id,
+                    content=image_decoded,
+                    file_type=ChatFileType.IMAGE
+                )
+                files.append(image)
 
-                    # remove summary from context
-                    context_docs = context_docs[1:]
+                # remove summary from context
+                context_docs = context_docs[1:]
 
-                    logger.info("Retrieved chunk contains an image -> added image to user prompt.")
-                    logger.notice(f"used image to answer question: \n{first_context_doc.document_id}")
+                logger.info("Retrieved chunk contains an image -> added image to user prompt.")
+                logger.notice(f"used image to answer question: \n{first_context_doc.document_id}")
 
         context_docs_str = build_complete_context_str(context_docs)
         logger.notice(
