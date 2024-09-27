@@ -667,18 +667,19 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 )
             )
 
-            # get images from page
-            page_images = parse_images(page["body"]["view"]["value"], page_id, self.confluence_client)
 
-            # if page contains any images: 
-            # add each image and its caption to doc/chunks
-            if page_images:
-                for image in page_images:
-                    # append image to metadata if usage of raw image true
-                    if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
-                        doc_metadata["image"] = image["image"]
+            if os.getenv('MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE', False):
+                # get images from page
+                page_images = parse_images(page["body"]["view"]["value"], page_id, self.confluence_client)
 
-                    if os.getenv('MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE', False):
+                # if page contains any images:
+                # add each image and its caption to doc/chunks
+                if page_images:
+                    for image in page_images:
+                        # append image to metadata if usage of raw image true
+                        if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
+                            doc_metadata["image"] = image["image"]
+
                         doc_batch.append(
                             Document(
                                 id=image["url"],
