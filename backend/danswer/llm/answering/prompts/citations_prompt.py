@@ -164,10 +164,11 @@ def build_citations_user_message(
         first_context_doc = context_docs[0]
         if "image" in first_context_doc.metadata.keys():
             image = first_context_doc.metadata["image"]
-            if image.startswith("data:image/jpeg;base64,"):
+            prefix = "data:image/jpeg;base64,"
+            if image.startswith(prefix):
                 image = InMemoryChatFile(
                     file_id=first_context_doc.document_id,
-                    content=base64.b64decode(image),
+                    content=base64.b64decode(image.removeprefix(prefix)),
                     file_type=ChatFileType.IMAGE
                 )
                 files.append(image)
