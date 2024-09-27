@@ -1,4 +1,5 @@
 import base64
+import os
 
 from langchain.schema.messages import HumanMessage
 from langchain.schema.messages import SystemMessage
@@ -148,8 +149,30 @@ def build_citations_user_message(
     )
 
     if context_docs:
+        # if top chunk contains image --> add image to user prompt
+        first_context_doc = context_docs[0]
+
+        if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
+            if "image" in first_context_doc.metadata.keys():
+                image = first_context_doc.metadata["image"]
+                prefix = "data:image/jpeg;base64,"
+                if image.startswith(prefix):
+                    # add image as chat file
+                    image = InMemoryChatFile(
+                        file_id=first_context_doc.document_id,
+                        content=base64.b64decode(image.removeprefix(prefix)),
+                        file_type=ChatFileType.IMAGE
+                    )
+                    files.append(image)
+
+                    # remove summary from context
+                    context_docs = context_docs[1:]
+
+                    logger.info("Retrieved chunk contains an image -> added image to user prompt.")
+
         context_docs_str = build_complete_context_str(context_docs)
-        logger.notice(f"retrieved contexts to answer question: \n{build_complete_context_str_eval_format(context_docs)}")
+        logger.notice(
+            f"retrieved contexts to answer question: \n{build_complete_context_str_eval_format(context_docs)}")
         optional_ignore = "" if all_doc_useful else DEFAULT_IGNORE_STATEMENT
 
         user_prompt = CITATIONS_PROMPT.format(
@@ -159,20 +182,6 @@ def build_citations_user_message(
             user_query=question,
             history_block=history_message,
         )
-
-        # if top chunk contains image --> add image to user prompt
-        first_context_doc = context_docs[0]
-        if "image" in first_context_doc.metadata.keys():
-            image = first_context_doc.metadata["image"]
-            prefix = "data:image/jpeg;base64,"
-            if image.startswith(prefix):
-                image = InMemoryChatFile(
-                    file_id=first_context_doc.document_id,
-                    content=base64.b64decode(image.removeprefix(prefix)),
-                    file_type=ChatFileType.IMAGE
-                )
-                files.append(image)
-                logger.info("Retrieved chunk contains an image -> added image to user prompt.")
 
     else:
         # if no context docs provided, assume we're in the tool calling flow
