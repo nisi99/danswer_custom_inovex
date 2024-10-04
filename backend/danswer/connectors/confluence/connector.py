@@ -25,7 +25,7 @@ from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
 )
-from danswer.connectors.confluence.image_parsing_utils import get_images_data
+from danswer.connectors.confluence.image_parsing_utils import _summarize_page_images
 
 from danswer.connectors.interfaces import GenerateDocumentsOutput
 from danswer.connectors.interfaces import LoadConnector
@@ -105,13 +105,6 @@ def parse_html_page(text: str, confluence_client: Confluence) -> str:
         # Include @ sign for tagging, more clear for LLM
         user.replaceWith("@" + _get_user(user_id, confluence_client))
     return format_document_soup(soup)
-
-
-def parse_images(text: str, page_id: str, confluence_client: Confluence) -> list[dict]:
-    """Parse a Confluence html page and extract images."""
-    #path = ""
-    images_data = get_images_data(text, confluence_client, page_id)
-    return images_data
 
 
 def get_used_attachments(text: str, confluence_client: Confluence) -> list[str]:
@@ -670,7 +663,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
             if os.getenv('MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE', False):
                 # get images from page
-                page_images = parse_images(page["body"]["view"]["value"], page_id, self.confluence_client)
+                page_images = _summarize_page_images(page, self.confluence_client, doc_metadata=doc_metadata)
 
                 # if page contains any images:
                 # add each image and its caption to doc/chunks
@@ -678,12 +671,12 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                     for image in page_images:
                         # append image to metadata if usage of raw image true
                         if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
-                            doc_metadata["image"] = image["image"]
+                            doc_metadata["image"] = image.base64_encoded
 
                         doc_batch.append(
                             Document(
-                                id=image["url"],
-                                sections=[Section(link=image["url"], text=image["summary"])],
+                                id=image.url,
+                                sections=[Section(link=image.url, text=image.summary)],
                                 source=DocumentSource.CONFLUENCE,
                                 semantic_identifier=page["title"],
                                 doc_updated_at=last_modified,
