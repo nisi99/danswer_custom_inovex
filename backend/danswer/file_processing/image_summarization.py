@@ -1,7 +1,6 @@
 import base64
 import os
 from io import BytesIO
-from typing import Dict
 
 from PIL import Image
 from openai import AzureOpenAI
@@ -58,7 +57,7 @@ deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 def _encode_image(image_data: bytes) -> str:
     """Getting the base64 string."""
     base64_encoded_data = base64.b64encode(image_data).decode("utf-8")
-    
+
     return f"data:image/jpeg;base64,{base64_encoded_data}"
 
 
@@ -68,7 +67,7 @@ def _resize_image_if_needed(image_data: bytes, max_size_mb: int = 20) -> bytes:
 
     if len(image_data) > max_size_bytes:
         with Image.open(BytesIO(image_data)) as img:
-            logger.warning(f"resizing image...")
+            logger.warning("resizing image...")
 
             # Reduce dimensions for better size reduction
             img.thumbnail((800, 800), Image.Resampling.LANCZOS)
