@@ -132,7 +132,7 @@ def build_complete_context_str(
 
 def build_complete_context_str_eval_format(
     context_docs: Sequence[LlmDoc | InferenceChunk],
-) -> str:
+) -> list[str]:
     context_strs = []
     for doc in context_docs:
         context_strs.append(doc.content)

@@ -155,11 +155,7 @@ def build_citations_user_message(
 
         if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
             if "image" in first_context_doc.metadata.keys():
-                image = first_context_doc.metadata["image"]
-                prefix = "data:image/jpeg;base64,"
-
-                # remove prefix and decode image
-                base64_image = image.removeprefix(prefix)
+                base64_image = str(first_context_doc.metadata["image"])
                 image_decoded = base64.b64decode(base64_image)
 
                 # add image as chat file

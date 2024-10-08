@@ -1,3 +1,4 @@
+import base64
 import io
 import os
 from collections.abc import Callable
@@ -5,12 +6,16 @@ from collections.abc import Collection
 from datetime import datetime
 from datetime import timezone
 from functools import lru_cache
-from typing import Any
+from typing import Any, List, Dict
 from typing import cast
 
 import bs4                        # type: ignore
+import requests
 from atlassian import Confluence  # type:ignore
+from attr import dataclass
+from bs4 import SoupStrainer
 from requests import HTTPError    # type: ignore
+from requests.exceptions import SSLError
 
 from danswer.configs.app_configs import (
     CONFLUENCE_CONNECTOR_ATTACHMENT_CHAR_COUNT_THRESHOLD,
@@ -25,7 +30,6 @@ from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
 )
-from danswer.connectors.confluence.image_parsing_utils import _summarize_page_images
 
 from danswer.connectors.interfaces import GenerateDocumentsOutput
 from danswer.connectors.interfaces import LoadConnector
@@ -37,6 +41,7 @@ from danswer.connectors.models import Document
 from danswer.connectors.models import Section
 from danswer.file_processing.extract_file_text import extract_file_text
 from danswer.file_processing.html_utils import format_document_soup
+from danswer.file_processing.image_summarization import summarize_image
 from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -552,18 +557,12 @@ class ConfluenceConnector(LoadConnector, PollConnector):
         self, confluence_client: Confluence, page_id: str, files_in_used: list[str]
     ) -> tuple[str, list[dict[str, Any]]]:
         unused_attachments: list = []
-
-        get_attachments_from_content = make_confluence_call_handle_rate_limit(
-            confluence_client.get_attachments_from_content
-        )
         files_attachment_content: list = []
 
         try:
-            expand = "history.lastUpdated,metadata.labels"
-            attachments_container = get_attachments_from_content(
-                page_id, start=0, limit=500, expand=expand
-            )
-            for attachment in attachments_container["results"]:
+            page_attachments = _get_page_attachments(confluence_client, page_id)
+
+            for attachment in page_attachments:
                 if attachment["title"] not in files_in_used:
                     unused_attachments.append(attachment)
                     continue
@@ -663,7 +662,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
             if os.getenv('MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE', False):
                 # get images from page
-                page_images = _summarize_page_images(page, self.confluence_client, doc_metadata=doc_metadata)
+                page_images = _summarize_page_images(page, self.confluence_client)
 
                 # if page contains any images:
                 # add each image and its caption to doc/chunks
@@ -676,7 +675,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                         doc_batch.append(
                             Document(
                                 id=image.url,
-                                sections=[Section(link=image.url, text=image.summary)],
+                                sections=[Section(link=image.url, text=image.summary or "")],
                                 source=DocumentSource.CONFLUENCE,
                                 semantic_identifier=page["title"],
                                 doc_updated_at=last_modified,
@@ -738,7 +737,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             doc_batch.append(
                 Document(
                     id=attachment_url,
-                    sections=[Section(link=attachment_url, text=attachment_content, image="None")],
+                    sections=[Section(link=attachment_url, text=attachment_content)],
                     source=DocumentSource.CONFLUENCE,
                     semantic_identifier=attachment["title"],
                     doc_updated_at=last_updated,
@@ -840,3 +839,93 @@ if __name__ == "__main__":
     )
     document_batches = connector.load_from_state()
     print(next(document_batches))
+
+
+@dataclass
+class PageImage:
+    url: str
+    title: str
+    base64_encoded: str
+    summary: str | None
+
+
+def _summarize_page_images(
+    page: Dict[str, Any],
+    confluence_client: Confluence
+) -> List[PageImage]:
+    """tbd"""
+    # extract images from page
+
+    confluence_xml = page["body"]["storage"]["value"]
+
+    relevant_images = SoupStrainer("ac:image")
+    soup = bs4.BeautifulSoup(confluence_xml, "html.parser", parse_only=relevant_images)
+    image_attachments = soup.find_all("ri:attachment")
+    images_data: List[PageImage] = []
+
+    page_id = page['id']
+
+    all_attachments = _get_page_attachments(confluence_client, page_id)
+
+    attachments_by_title = {
+        attachment["title"]: attachment for attachment in all_attachments
+    }
+
+    # export each image
+    for i, attachment in enumerate(image_attachments):
+        filename = attachment["ri:filename"]
+        attachment = attachments_by_title[filename]
+
+        try:
+            download_link = ConfluenceConnector._attachment_to_download_link(confluence_client, attachment)
+            # get image from url
+            response = confluence_client._session.get(download_link)
+            if response.status_code != 200:
+                logger.warning(
+                    f"Failed to fetch {download_link} with invalid status code {response.status_code}"
+                )
+                continue
+
+            image_data = response.content
+
+            # TODO: use english?
+            image_context = (f"Das Bild hat den Dateinamen '{filename}' "
+                             f"und ist auf einer Confluence Seite mit dem Titel '{page['title']}' eingebettet."
+                             f"Beschreibe präzise und prägnant, was das Bild im Kontext der Seite zeigt und wozu es dient."
+                             f"Folgend ist XML-Quelltext der Seite:\n\n") \
+                             + confluence_xml
+
+            summary = summarize_image(image_data, image_context)
+
+            base64_image = base64.b64encode(image_data).decode("utf-8")
+
+            # save (meta-)data to list for further processing
+            images_data.append(
+                PageImage(
+                    url=filename,
+                    title=f'{page_id}_image_{i}',
+                    base64_encoded=base64_image,
+                    summary=summary
+                )
+            )
+
+        except SSLError as e:
+            logger.warning(f"SSL Error: {e}")
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Request Exception: {e}")
+
+
+    return images_data
+
+
+def _get_page_attachments(confluence_client: Confluence, page_id: str) -> List[Dict[str, Any]]:
+    get_attachments_from_content = make_confluence_call_handle_rate_limit(
+        confluence_client.get_attachments_from_content
+    )
+    expand = "history.lastUpdated,metadata.labels"
+    attachments_container = get_attachments_from_content(
+        page_id, start=0, limit=500, expand=expand
+    )
+    attachments = attachments_container["results"]
+    return attachments

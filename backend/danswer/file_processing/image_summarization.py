@@ -11,12 +11,9 @@ from danswer.utils.logger import setup_logger
 logger = setup_logger()
 
 
-def summarize_image(image_data: bytes, metadata: Dict[str, str] = None) -> str | None:
+def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
     """Use ChatGPT to generate a summary of an image."""
     # initialize the Azure OpenAI Model
-
-    if metadata is None:
-        metadata = {}
 
     image_data = _resize_image_if_needed(image_data)
 
@@ -25,33 +22,27 @@ def summarize_image(image_data: bytes, metadata: Dict[str, str] = None) -> str |
 
     model = AzureOpenAI()
 
-    prompt = """
-        Du bist ein Assistent für die Zusammenfassung von Bildern für das Retrieval.
-        Fasse den Inhalt des folgenden Bildes zusammen und sei dabei so präzise wie möglich.
-        Die Zusammenfassung wird eingebettet und verwendet, um das Originalbild abzurufen.
-        Verfasse daher eine prägnante Zusammenfassung des Bildes, die für das Retrieval optimiert ist.
-    """
-
-    metadata_joined = "\n".join({f'{k}={v}' for k, v in metadata.items()})
-
-    # build Prompt-Template
-    query = [
-        {"type": "text", "text": "Fasse den Inhalt und das Motiv des Bildes zusammen."
-                                 "Die Seite, auf der dieses Bild zu sehen ist, hat folgende Metadaten:\n"
-                                 f"{metadata_joined}"},
-        {"type": "image_url", "image_url": {"url": encoded_image}},
-    ]
+    if not query:
+        query = "Fasse den Inhalt und das Motiv des Bildes zusammen."
 
     res = model.chat.completions.create(
         model=deployment_name,
         messages=[
             {
                 "role": "system",
-                "content": prompt
+                "content": """
+                    Du bist ein Assistent für die Zusammenfassung von Bildern für das Retrieval.
+                    Fasse den Inhalt des folgenden Bildes zusammen und sei dabei so präzise wie möglich.
+                    Die Zusammenfassung wird eingebettet und verwendet, um das Originalbild abzurufen.
+                    Verfasse daher eine prägnante Zusammenfassung des Bildes, die für das Retrieval optimiert ist.
+                """
             },
             {
                 "role": "user",
-                "content": query,
+                "content": [
+                    {"type": "text", "text": query},
+                    {"type": "image_url", "image_url": {"url": encoded_image}},
+                ],
             },
         ],
         temperature=0.0
