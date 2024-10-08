@@ -15,7 +15,7 @@ from danswer.llm.answering.models import PromptConfig
 from danswer.llm.factory import get_llms_for_persona
 from danswer.llm.factory import get_main_llm_from_tuple
 from danswer.llm.interfaces import LLMConfig
-from danswer.llm.utils import build_content_with_imgs, build_content_with_imgs_from_chunk
+from danswer.llm.utils import build_content_with_imgs
 from danswer.llm.utils import check_number_of_tokens
 from danswer.llm.utils import get_max_input_tokens
 from danswer.prompts.chat_prompts import REQUIRE_CITATION_STATEMENT
@@ -23,7 +23,8 @@ from danswer.prompts.constants import DEFAULT_IGNORE_STATEMENT
 from danswer.prompts.direct_qa_prompts import CITATIONS_PROMPT
 from danswer.prompts.direct_qa_prompts import CITATIONS_PROMPT_FOR_TOOL_CALLING
 from danswer.prompts.prompt_utils import add_date_time_to_prompt
-from danswer.prompts.prompt_utils import build_complete_context_str, build_complete_context_str_eval_format
+from danswer.prompts.prompt_utils import build_complete_context_str
+from danswer.prompts.prompt_utils import build_complete_context_str_eval_format
 from danswer.prompts.prompt_utils import build_task_prompt_reminders
 from danswer.prompts.token_counts import ADDITIONAL_INFO_TOKEN_CNT
 from danswer.prompts.token_counts import (
@@ -153,7 +154,7 @@ def build_citations_user_message(
         first_context_doc = context_docs[0]
         logger.info(f"first_context_doc = {first_context_doc}")
 
-        if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
+        if os.getenv("MULTIMODAL_ANSWERING_WITH_RAW_IMAGE", False):
             if "image" in first_context_doc.metadata.keys():
                 base64_image = str(first_context_doc.metadata["image"])
                 image_decoded = base64.b64decode(base64_image)
@@ -162,19 +163,24 @@ def build_citations_user_message(
                 image = InMemoryChatFile(
                     file_id=first_context_doc.document_id,
                     content=image_decoded,
-                    file_type=ChatFileType.IMAGE
+                    file_type=ChatFileType.IMAGE,
                 )
                 files.append(image)
 
                 # remove summary from context
                 context_docs = context_docs[1:]
 
-                logger.info("Retrieved chunk contains an image -> added image to user prompt.")
-                logger.notice(f"used image to answer question: \n{first_context_doc.document_id}")
+                logger.info(
+                    "Retrieved chunk contains an image -> added image to user prompt."
+                )
+                logger.notice(
+                    f"used image to answer question: \n{first_context_doc.document_id}"
+                )
 
         context_docs_str = build_complete_context_str(context_docs)
         logger.notice(
-            f"retrieved contexts to answer question: \n{build_complete_context_str_eval_format(context_docs)}")
+            f"retrieved contexts to answer question: \n{build_complete_context_str_eval_format(context_docs)}"
+        )
         optional_ignore = "" if all_doc_useful else DEFAULT_IGNORE_STATEMENT
 
         user_prompt = CITATIONS_PROMPT.format(

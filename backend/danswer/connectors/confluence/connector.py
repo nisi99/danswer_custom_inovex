@@ -6,15 +6,17 @@ from collections.abc import Collection
 from datetime import datetime
 from datetime import timezone
 from functools import lru_cache
-from typing import Any, List, Dict
+from typing import Any
 from typing import cast
+from typing import Dict
+from typing import List
 
-import bs4                        # type: ignore
+import bs4  # type: ignore
 import requests
 from atlassian import Confluence  # type:ignore
 from attr import dataclass
 from bs4 import SoupStrainer
-from requests import HTTPError    # type: ignore
+from requests import HTTPError  # type: ignore
 from requests.exceptions import SSLError
 
 from danswer.configs.app_configs import (
@@ -30,7 +32,6 @@ from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
 )
-
 from danswer.connectors.interfaces import GenerateDocumentsOutput
 from danswer.connectors.interfaces import LoadConnector
 from danswer.connectors.interfaces import PollConnector
@@ -659,8 +660,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 )
             )
 
-
-            if os.getenv('MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE', False):
+            if os.getenv("MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE", False):
                 # get images from page
                 page_images = _summarize_page_images(page, self.confluence_client)
 
@@ -669,13 +669,15 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 if page_images:
                     for image in page_images:
                         # append image to metadata if usage of raw image true
-                        if os.getenv('MULTIMODAL_ANSWERING_WITH_RAW_IMAGE', False):
+                        if os.getenv("MULTIMODAL_ANSWERING_WITH_RAW_IMAGE", False):
                             doc_metadata["image"] = image.base64_encoded
 
                         doc_batch.append(
                             Document(
                                 id=image.url,
-                                sections=[Section(link=image.url, text=image.summary or "")],
+                                sections=[
+                                    Section(link=image.url, text=image.summary or "")
+                                ],
                                 source=DocumentSource.CONFLUENCE,
                                 semantic_identifier=page["title"],
                                 doc_updated_at=last_modified,
@@ -850,8 +852,7 @@ class PageImage:
 
 
 def _summarize_page_images(
-    page: Dict[str, Any],
-    confluence_client: Confluence
+    page: Dict[str, Any], confluence_client: Confluence
 ) -> List[PageImage]:
     """tbd"""
     # extract images from page
@@ -863,7 +864,7 @@ def _summarize_page_images(
     image_attachments = soup.find_all("ri:attachment")
     images_data: List[PageImage] = []
 
-    page_id = page['id']
+    page_id = page["id"]
 
     all_attachments = _get_page_attachments(confluence_client, page_id)
 
@@ -877,7 +878,9 @@ def _summarize_page_images(
         attachment = attachments_by_title[filename]
 
         try:
-            download_link = ConfluenceConnector._attachment_to_download_link(confluence_client, attachment)
+            download_link = ConfluenceConnector._attachment_to_download_link(
+                confluence_client, attachment
+            )
             # get image from url
             response = confluence_client._session.get(download_link)
             if response.status_code != 200:
@@ -889,11 +892,12 @@ def _summarize_page_images(
             image_data = response.content
 
             # TODO: use english?
-            image_context = (f"Das Bild hat den Dateinamen '{filename}' "
-                             f"und ist auf einer Confluence Seite mit dem Titel '{page['title']}' eingebettet."
-                             f"Beschreibe präzise und prägnant, was das Bild im Kontext der Seite zeigt und wozu es dient."
-                             f"Folgend ist XML-Quelltext der Seite:\n\n") \
-                             + confluence_xml
+            image_context = (
+                f"Das Bild hat den Dateinamen '{filename}' "
+                f"und ist auf einer Confluence Seite mit dem Titel '{page['title']}' eingebettet."
+                f"Beschreibe präzise und prägnant, was das Bild im Kontext der Seite zeigt und wozu es dient."
+                f"Folgend ist XML-Quelltext der Seite:\n\n"
+            ) + confluence_xml
 
             summary = summarize_image(image_data, image_context)
 
@@ -903,9 +907,9 @@ def _summarize_page_images(
             images_data.append(
                 PageImage(
                     url=filename,
-                    title=f'{page_id}_image_{i}',
+                    title=f"{page_id}_image_{i}",
                     base64_encoded=base64_image,
-                    summary=summary
+                    summary=summary,
                 )
             )
 
@@ -915,11 +919,12 @@ def _summarize_page_images(
         except requests.exceptions.RequestException as e:
             logger.warning(f"Request Exception: {e}")
 
-
     return images_data
 
 
-def _get_page_attachments(confluence_client: Confluence, page_id: str) -> List[Dict[str, Any]]:
+def _get_page_attachments(
+    confluence_client: Confluence, page_id: str
+) -> List[Dict[str, Any]]:
     get_attachments_from_content = make_confluence_call_handle_rate_limit(
         confluence_client.get_attachments_from_content
     )

@@ -2,8 +2,8 @@ import base64
 import os
 from io import BytesIO
 
-from PIL import Image
 from openai import AzureOpenAI
+from PIL import Image
 
 from danswer.utils.logger import setup_logger
 
@@ -34,7 +34,7 @@ def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
                     Fasse den Inhalt des folgenden Bildes zusammen und sei dabei so präzise wie möglich.
                     Die Zusammenfassung wird eingebettet und verwendet, um das Originalbild abzurufen.
                     Verfasse daher eine prägnante Zusammenfassung des Bildes, die für das Retrieval optimiert ist.
-                """
+                """,
             },
             {
                 "role": "user",
@@ -44,7 +44,7 @@ def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
                 ],
             },
         ],
-        temperature=0.0
+        temperature=0.0,
     )
     summary = res.choices[0].message.content
 
@@ -74,7 +74,7 @@ def _resize_image_if_needed(image_data: bytes, max_size_mb: int = 20) -> bytes:
             output = BytesIO()
 
             # Save with lower quality for compression
-            img.save(output, format='JPEG', quality=85)
+            img.save(output, format="JPEG", quality=85)
             resized_data = output.getvalue()
 
             return resized_data
