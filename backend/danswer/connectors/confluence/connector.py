@@ -28,6 +28,8 @@ from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_SKIP_LABEL_INDEXING
 from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
+from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
+from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_RAW_IMAGE
 from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
@@ -660,16 +662,18 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 )
             )
 
-            if os.getenv("MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE", False):
-                # get images from page
+            if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
+                # get summaries of images from page
                 page_images = _summarize_page_images(page, self.confluence_client)
+                # add tag to flag summaries (needed to switch between base and multimodal danswer)
+                doc_metadata["is_image_summary"] = "True"
 
                 # if page contains any images:
                 # add each image and its caption to doc/chunks
                 if page_images:
                     for image in page_images:
                         # append image to metadata if usage of raw image true
-                        if os.getenv("MULTIMODAL_ANSWERING_WITH_RAW_IMAGE", False):
+                        if MULTIMODAL_ANSWERING_WITH_RAW_IMAGE:
                             doc_metadata["image"] = image.base64_encoded
 
                         doc_batch.append(
