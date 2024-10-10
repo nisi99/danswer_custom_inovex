@@ -862,6 +862,7 @@ def _summarize_page_images(
     # extract images from page
 
     confluence_xml = page["body"]["storage"]["value"]
+    page_url = page["_links"]["self"].split("/rest")[0] + page["_links"]["webui"]
 
     relevant_images = SoupStrainer("ac:image")
     soup = bs4.BeautifulSoup(confluence_xml, "html.parser", parse_only=relevant_images)
@@ -897,10 +898,10 @@ def _summarize_page_images(
 
             # TODO: use english?
             image_context = (
-                f"Das Bild hat den Dateinamen '{filename}' "
-                f"und ist auf einer Confluence Seite mit dem Titel '{page['title']}' eingebettet."
-                f"Beschreibe präzise und prägnant, was das Bild im Kontext der Seite zeigt und wozu es dient."
-                f"Folgend ist XML-Quelltext der Seite:\n\n"
+                f"The image has the file name '{filename}' "
+                f"and is embedded on a Confluence page with the tile '{page['title']}'."
+                f"Describe precisely and concisely what the image shows in the context of the page and what it is used for."
+                f"Below is the XML source of the page:\n\n"
             ) + confluence_xml
 
             summary = summarize_image(image_data, image_context)
@@ -910,7 +911,7 @@ def _summarize_page_images(
             # save (meta-)data to list for further processing
             images_data.append(
                 PageImage(
-                    url=filename,
+                    url= page_url + "#" + filename,
                     title=f"{page_id}_image_{i}",
                     base64_encoded=base64_image,
                     summary=summary,

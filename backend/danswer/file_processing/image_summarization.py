@@ -22,7 +22,7 @@ def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
     model = AzureOpenAI()
 
     if not query:
-        query = "Fasse den Inhalt und das Motiv des Bildes zusammen."
+        query = "Summarize the content and the subject of the picture."
 
     res = model.chat.completions.create(
         model=deployment_name,
@@ -30,10 +30,10 @@ def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
             {
                 "role": "system",
                 "content": """
-                    Du bist ein Assistent für die Zusammenfassung von Bildern für das Retrieval.
-                    Fasse den Inhalt des folgenden Bildes zusammen und sei dabei so präzise wie möglich.
-                    Die Zusammenfassung wird eingebettet und verwendet, um das Originalbild abzurufen.
-                    Verfasse daher eine prägnante Zusammenfassung des Bildes, die für das Retrieval optimiert ist.
+                    You are an assistant for summarizing images for retrieval.
+                    Summarize the content of the following image and be as precise as possible.
+                    The summary will be embedded and used to retrieve the original image.
+                    Therefore, write a concise summary of the image that is optimized for retrieval.
                 """,
             },
             {
