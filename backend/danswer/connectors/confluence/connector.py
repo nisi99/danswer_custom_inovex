@@ -310,6 +310,7 @@ class SummarizationResult:
     url: str
     title: str
     base64_encoded: str
+    media_type: str
     summary: str | None
 
 
@@ -893,6 +894,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                     url=download_link,
                     title=title,
                     base64_encoded=base64_image,
+                    media_type=attachment["mediaType"],
                     summary=summary,
                 )
             )
