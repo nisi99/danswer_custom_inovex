@@ -3,7 +3,7 @@ import os
 from io import BytesIO
 
 from openai import AzureOpenAI
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from danswer.utils.logger import setup_logger
 
@@ -66,17 +66,20 @@ def _resize_image_if_needed(image_data: bytes, max_size_mb: int = 20) -> bytes:
     max_size_bytes = max_size_mb * 1024 * 1024
 
     if len(image_data) > max_size_bytes:
-        with Image.open(BytesIO(image_data)) as img:
-            logger.warning("resizing image...")
+        try:
+            with Image.open(BytesIO(image_data)) as img:
+                logger.info("resizing image...")
 
-            # Reduce dimensions for better size reduction
-            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-            output = BytesIO()
+                # Reduce dimensions for better size reduction
+                img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+                output = BytesIO()
 
-            # Save with lower quality for compression
-            img.save(output, format="JPEG", quality=85)
-            resized_data = output.getvalue()
+                # Save with lower quality for compression
+                img.save(output, format="JPEG", quality=85)
+                resized_data = output.getvalue()
 
-            return resized_data
+                return resized_data
+        except UnidentifiedImageError:
+            logger.warning(f"Error: Cannot identify image file. Please check the image data.")
 
     return image_data
