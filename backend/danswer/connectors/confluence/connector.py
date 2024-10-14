@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import io
 import os
@@ -672,7 +673,9 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
             if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
                 # get summaries of images from page
-                page_images = self._summarize_page_images(page, self.confluence_client)
+                page_images = asyncio.run(
+                    self._summarize_page_images(page, self.confluence_client)
+                )
                 # add tag to flag summaries (needed to switch between base and multimodal danswer)
                 doc_metadata["is_image_summary"] = "True"
 
@@ -691,7 +694,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                                     Section(link=page_url, text=image.summary or "")
                                 ],
                                 source=DocumentSource.CONFLUENCE,
-                                semantic_identifier=page["title"],
+                                semantic_identifier=image.title,
                                 doc_updated_at=last_modified,
                                 primary_owners=(
                                     [BasicExpertInfo(email=author)] if author else None
@@ -837,7 +840,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 break
 
     @classmethod
-    def _summarize_page_images(
+    async def _summarize_page_images(
         cls, page: Dict[str, Any], confluence_client: Confluence
     ) -> List[ImageSummarization]:
         """Create LLM summaries of all embedded (used) image attachments on the given page"""
@@ -849,10 +852,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             confluence_client, confluence_xml, page_id
         )
 
-        results: List[ImageSummarization] = []
-
-        # export each image
-        for attachment in attachments:
+        async def summarize_attachment(attachment):
             title = attachment["title"]
             download_link = ConfluenceConnector._attachment_to_download_link(
                 confluence_client, attachment
@@ -869,7 +869,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                     download_link,
                     exc_info=e,
                 )
-                continue
+                return None
 
             # TODO: use english?
             image_context = (
@@ -883,18 +883,19 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
             base64_image = base64.b64encode(image_data).decode("utf-8")
 
-            # save (meta-)data to list for further processing
-            results.append(
-                ImageSummarization(
-                    url=download_link,
-                    title=title,
-                    base64_encoded=base64_image,
-                    media_type=attachment["metadata"]["mediaType"],
-                    summary=summary,
-                )
+            return ImageSummarization(
+                url=download_link,
+                title=title,
+                base64_encoded=base64_image,
+                media_type=attachment["metadata"]["mediaType"],
+                summary=summary,
             )
 
-        return results
+        results = await asyncio.gather(
+            *[summarize_attachment(attachment) for attachment in attachments]
+        )
+
+        return [result for result in results if result is not None]
 
     @classmethod
     def _get_embedded_image_attachments(
