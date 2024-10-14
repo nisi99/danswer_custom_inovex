@@ -306,7 +306,7 @@ class RecursiveIndexer:
 
 
 @dataclass
-class SummarizationResult:
+class ImageSummarization:
     url: str
     title: str
     base64_encoded: str
@@ -840,7 +840,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
     @classmethod
     def _summarize_page_images(
         cls, page: Dict[str, Any], confluence_client: Confluence
-    ) -> List[SummarizationResult]:
+    ) -> List[ImageSummarization]:
         """Create LLM summaries of all embedded (used) image attachments on the given page"""
 
         page_id = page["id"]
@@ -850,7 +850,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             confluence_client, confluence_xml, page_id
         )
 
-        results: List[SummarizationResult] = []
+        results: List[ImageSummarization] = []
 
         # export each image
         for attachment in attachments:
@@ -890,7 +890,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
             # save (meta-)data to list for further processing
             results.append(
-                SummarizationResult(
+                ImageSummarization(
                     url=download_link,
                     title=title,
                     base64_encoded=base64_image,
