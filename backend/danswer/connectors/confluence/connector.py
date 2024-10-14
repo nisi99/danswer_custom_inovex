@@ -28,8 +28,8 @@ from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_SKIP_LABEL_INDEXING
 from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
-from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
 from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_RAW_IMAGE
+from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
 from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
@@ -848,7 +848,7 @@ if __name__ == "__main__":
 
 
 @dataclass
-class PageImage:
+class SummarizationResult:
     url: str
     title: str
     base64_encoded: str
@@ -857,78 +857,100 @@ class PageImage:
 
 def _summarize_page_images(
     page: Dict[str, Any], confluence_client: Confluence
-) -> List[PageImage]:
-    """tbd"""
-    # extract images from page
-
-    confluence_xml = page["body"]["storage"]["value"]
-    page_url = page["_links"]["self"].split("/rest")[0] + page["_links"]["webui"]
-
-    relevant_images = SoupStrainer("ac:image")
-    soup = bs4.BeautifulSoup(confluence_xml, "html.parser", parse_only=relevant_images)
-    image_attachments = soup.find_all("ri:attachment")
-    images_data: List[PageImage] = []
+) -> List[SummarizationResult]:
+    """Create LLM summaries of all embedded (used) image attachments on the given page"""
 
     page_id = page["id"]
+    confluence_xml = page["body"]["storage"]["value"]
 
-    all_attachments = _get_page_attachments(confluence_client, page_id)
+    attachments = _get_embedded_image_attachments(
+        confluence_client, confluence_xml, page_id
+    )
 
-    attachments_by_title = {
-        attachment["title"]: attachment for attachment in all_attachments
-    }
+    results: List[SummarizationResult] = []
 
     # export each image
-    for i, attachment in enumerate(image_attachments):
-        filename = attachment["ri:filename"]
-        attachment = attachments_by_title[filename]
+    for attachment in attachments:
+        title = attachment["title"]
+        download_link = ConfluenceConnector._attachment_to_download_link(
+            confluence_client, attachment
+        )
 
-        if not filename.endswith(".mp4"):
-            try:
-                download_link = ConfluenceConnector._attachment_to_download_link(
-                    confluence_client, attachment
+        try:
+            # get image from url
+            response = confluence_client.get(download_link, advanced_mode=True)
+            if response.status_code != 200:
+                logger.warning(
+                    f"Failed to fetch {download_link} with invalid status code {response.status_code}"
                 )
-                logger.info(f"Attempting to get image: {download_link}")
-                # get image from url
-                response = confluence_client._session.get(download_link)
-                if response.status_code != 200:
-                    logger.warning(
-                        f"Failed to fetch {download_link} with invalid status code {response.status_code}"
-                    )
-                    continue
+                continue
 
-                image_data = response.content
+            image_data = response.content
 
-                image_context = (
-                    f"The image has the file name '{filename}' "
-                    f"and is embedded on a Confluence page with the tile '{page['title']}'."
-                    f"Describe precisely and concisely what the image shows in the context of the page and what it is used for."
-                    f"Below is the XML source of the page:\n\n"
-                ) + confluence_xml
+        except SSLError as e:
+            logger.warning(f"SSL Error: {e}")
 
-                summary = summarize_image(image_data, image_context)
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Request Exception: {e}")
 
-                base64_image = base64.b64encode(image_data).decode("utf-8")
+        # TODO: use english?
+        image_context = (
+            f"Das Bild hat den Dateinamen '{title}' "
+            f"und ist auf einer Confluence Seite mit dem Titel '{page['title']}' eingebettet."
+            f"Beschreibe präzise und prägnant, was das Bild im Kontext der Seite zeigt und wozu es dient."
+            f"Folgend ist XML-Quelltext der Seite:\n\n"
+        ) + confluence_xml
 
-                # save (meta-)data to list for further processing
-                images_data.append(
-                    PageImage(
-                        url= page_url + "#" + filename,
-                        title=f"{page_id}_image_{i}",
-                        base64_encoded=base64_image,
-                        summary=summary,
-                    )
-                )
-                logger.info("finished succesfully")
+        summary = summarize_image(image_data, image_context)
 
-            except SSLError as e:
-                logger.warning(f"SSL Error: {e}")
+        base64_image = base64.b64encode(image_data).decode("utf-8")
 
-            except requests.exceptions.RequestException as e:
-                logger.warning(f"Request Exception: {e}")
-        else:
-            logger.info(f"skipping: {filename}")
+        # save (meta-)data to list for further processing
+        results.append(
+            SummarizationResult(
+                url=download_link,
+                title=title,
+                base64_encoded=base64_image,
+                summary=summary,
+            )
+        )
 
-    return images_data
+    return results
+
+
+def _get_embedded_image_attachments(
+    confluence_client: Confluence, confluence_xml: str, page_id: str
+) -> List[Dict[str, Any]]:
+    page_attachments = _get_page_attachments(confluence_client, page_id)
+
+    relevant_tags = SoupStrainer(["ac:image", "ac:structured-macro"])
+    soup = bs4.BeautifulSoup(confluence_xml, "html.parser", parse_only=relevant_tags)
+
+    image_attachment_tags = soup.find_all(
+        lambda tag: tag.name == "ri:attachment"
+        and tag.parent is not None
+        and tag.parent.name == "ac:image"
+    )
+    image_attachments = [
+        att
+        for att in page_attachments
+        if att["title"] in [tag["ri:filename"] for tag in image_attachment_tags]
+    ]
+
+    gliffy_macro_tags = soup.find_all(
+        "ac:structured-macro", attrs={"ac:name": "gliffy"}
+    )
+    gliffy_attachments = [
+        att
+        for att in page_attachments
+        if att["id"]
+        in [
+            tag.find(attrs={"ac:name": "imageAttachmentId"}).string
+            for tag in gliffy_macro_tags
+        ]
+    ]
+
+    return [*image_attachments, *gliffy_attachments]
 
 
 def _get_page_attachments(
