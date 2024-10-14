@@ -886,6 +886,7 @@ def _summarize_page_images(
             download_link = ConfluenceConnector._attachment_to_download_link(
                 confluence_client, attachment
             )
+            logger.info(f"Attempting to get image: {download_link}")
             # get image from url
             response = confluence_client._session.get(download_link)
             if response.status_code != 200:
@@ -896,7 +897,6 @@ def _summarize_page_images(
 
             image_data = response.content
 
-            # TODO: use english?
             image_context = (
                 f"The image has the file name '{filename}' "
                 f"and is embedded on a Confluence page with the tile '{page['title']}'."
@@ -917,6 +917,7 @@ def _summarize_page_images(
                     summary=summary,
                 )
             )
+            logger.info("finished succesfully")
 
         except SSLError as e:
             logger.warning(f"SSL Error: {e}")
