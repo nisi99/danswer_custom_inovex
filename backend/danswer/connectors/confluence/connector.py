@@ -935,6 +935,7 @@ def _get_embedded_image_attachments(
         att
         for att in page_attachments
         if att["title"] in [tag["ri:filename"] for tag in image_attachment_tags]
+        and att["mediaType"].startswith("image/")
     ]
 
     gliffy_macro_tags = soup.find_all(
