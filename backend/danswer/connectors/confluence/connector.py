@@ -888,7 +888,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                     url=download_link,
                     title=title,
                     base64_encoded=base64_image,
-                    media_type=attachment["mediaType"],
+                    media_type=attachment["metadata"]["mediaType"],
                     summary=summary,
                 )
             )
@@ -915,7 +915,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             att
             for att in page_attachments
             if att["title"] in [tag["ri:filename"] for tag in image_attachment_tags]
-            and att["mediaType"].startswith("image/")
+            and att["metadata"]["mediaType"].startswith("image/")
         ]
 
         gliffy_macro_tags = soup.find_all(
