@@ -860,8 +860,9 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
             try:
                 # get image from url
-                response = confluence_client.get(download_link)
-                image_data = response.content
+                image_data = confluence_client.get(
+                    download_link, absolute=True, not_json_response=True
+                )
             except requests.exceptions.RequestException as e:
                 logger.error(
                     "Failed to fetch image for summarization. url=%s",
