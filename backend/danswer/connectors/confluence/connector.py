@@ -210,7 +210,7 @@ class RecursiveIndexer:
         )
         try:
             origin_page = get_page_by_id(
-                self.origin_page_id, expand="body.view.value,version"
+                self.origin_page_id, expand="body.storage.value,body.view.value,version"
             )
             return origin_page
         except Exception as e:
