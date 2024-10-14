@@ -882,48 +882,51 @@ def _summarize_page_images(
         filename = attachment["ri:filename"]
         attachment = attachments_by_title[filename]
 
-        try:
-            download_link = ConfluenceConnector._attachment_to_download_link(
-                confluence_client, attachment
-            )
-            logger.info(f"Attempting to get image: {download_link}")
-            # get image from url
-            response = confluence_client._session.get(download_link)
-            if response.status_code != 200:
-                logger.warning(
-                    f"Failed to fetch {download_link} with invalid status code {response.status_code}"
+        if not filename.endswith(".mp4"):
+            try:
+                download_link = ConfluenceConnector._attachment_to_download_link(
+                    confluence_client, attachment
                 )
-                continue
+                logger.info(f"Attempting to get image: {download_link}")
+                # get image from url
+                response = confluence_client._session.get(download_link)
+                if response.status_code != 200:
+                    logger.warning(
+                        f"Failed to fetch {download_link} with invalid status code {response.status_code}"
+                    )
+                    continue
 
-            image_data = response.content
+                image_data = response.content
 
-            image_context = (
-                f"The image has the file name '{filename}' "
-                f"and is embedded on a Confluence page with the tile '{page['title']}'."
-                f"Describe precisely and concisely what the image shows in the context of the page and what it is used for."
-                f"Below is the XML source of the page:\n\n"
-            ) + confluence_xml
+                image_context = (
+                    f"The image has the file name '{filename}' "
+                    f"and is embedded on a Confluence page with the tile '{page['title']}'."
+                    f"Describe precisely and concisely what the image shows in the context of the page and what it is used for."
+                    f"Below is the XML source of the page:\n\n"
+                ) + confluence_xml
 
-            summary = summarize_image(image_data, image_context)
+                summary = summarize_image(image_data, image_context)
 
-            base64_image = base64.b64encode(image_data).decode("utf-8")
+                base64_image = base64.b64encode(image_data).decode("utf-8")
 
-            # save (meta-)data to list for further processing
-            images_data.append(
-                PageImage(
-                    url= page_url + "#" + filename,
-                    title=f"{page_id}_image_{i}",
-                    base64_encoded=base64_image,
-                    summary=summary,
+                # save (meta-)data to list for further processing
+                images_data.append(
+                    PageImage(
+                        url= page_url + "#" + filename,
+                        title=f"{page_id}_image_{i}",
+                        base64_encoded=base64_image,
+                        summary=summary,
+                    )
                 )
-            )
-            logger.info("finished succesfully")
+                logger.info("finished succesfully")
 
-        except SSLError as e:
-            logger.warning(f"SSL Error: {e}")
+            except SSLError as e:
+                logger.warning(f"SSL Error: {e}")
 
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Request Exception: {e}")
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Request Exception: {e}")
+        else:
+            logger.info(f"skipping: {filename}")
 
     return images_data
 

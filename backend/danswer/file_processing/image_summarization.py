@@ -15,8 +15,6 @@ def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
     # initialize the Azure OpenAI Model
 
     image_data = _resize_image_if_needed(image_data)
-    if image_data == "skip":
-        return "Video - handling tbd..."
 
     # encode image (for llm)
     encoded_image = _encode_image(image_data)
@@ -68,22 +66,17 @@ def _resize_image_if_needed(image_data: bytes, max_size_mb: int = 20) -> bytes:
     max_size_bytes = max_size_mb * 1024 * 1024
 
     if len(image_data) > max_size_bytes:
-        try:
-            with Image.open(BytesIO(image_data)) as img:
-                logger.info("resizing image...")
+        with Image.open(BytesIO(image_data)) as img:
+            logger.info("resizing image...")
 
-                # Reduce dimensions for better size reduction
-                img.thumbnail((800, 800), Image.Resampling.LANCZOS)
-                output = BytesIO()
+            # Reduce dimensions for better size reduction
+            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+            output = BytesIO()
 
-                # Save with lower quality for compression
-                img.save(output, format="JPEG", quality=85)
-                resized_data = output.getvalue()
+            # Save with lower quality for compression
+            img.save(output, format="JPEG", quality=85)
+            resized_data = output.getvalue()
 
-                return resized_data
-        except UnidentifiedImageError:
-            logger.warning(f"Error: Cannot identify image file. Please check the image data.")
-            #raise ValueError("Cannot identify image file - skipping it")
-            return "skip"
+            return resized_data
 
     return image_data
