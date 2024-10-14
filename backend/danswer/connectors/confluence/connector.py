@@ -688,7 +688,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                             Document(
                                 id=image.url,
                                 sections=[
-                                    Section(link=image.url, text=image.summary or "")
+                                    Section(link=page_url, text=image.summary or "")
                                 ],
                                 source=DocumentSource.CONFLUENCE,
                                 semantic_identifier=page["title"],
