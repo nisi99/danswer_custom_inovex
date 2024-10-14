@@ -17,7 +17,6 @@ from atlassian import Confluence  # type:ignore
 from attr import dataclass
 from bs4 import SoupStrainer
 from requests import HTTPError  # type: ignore
-from requests.exceptions import SSLError
 
 from danswer.configs.app_configs import (
     CONFLUENCE_CONNECTOR_ATTACHMENT_CHAR_COUNT_THRESHOLD,
@@ -861,20 +860,15 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
             try:
                 # get image from url
-                response = confluence_client.get(download_link, advanced_mode=True)
-                if response.status_code != 200:
-                    logger.warning(
-                        f"Failed to fetch {download_link} with invalid status code {response.status_code}"
-                    )
-                    continue
-
+                response = confluence_client.get(download_link)
                 image_data = response.content
-
-            except SSLError as e:
-                logger.warning(f"SSL Error: {e}")
-
             except requests.exceptions.RequestException as e:
-                logger.warning(f"Request Exception: {e}")
+                logger.error(
+                    "Failed to fetch image for summarization. url=%s",
+                    download_link,
+                    exc_info=e,
+                )
+                continue
 
             # TODO: use english?
             image_context = (
