@@ -1,15 +1,28 @@
 import base64
+import logging
 import os
 from io import BytesIO
 
 from openai import AzureOpenAI
-from PIL import Image, UnidentifiedImageError
+from openai import RateLimitError
+from PIL import Image
+from tenacity import before_sleep_log
+from tenacity import retry
+from tenacity import retry_if_exception_type
+from tenacity import stop_after_attempt
+from tenacity import wait_random_exponential
 
 from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
 
 
+@retry(
+    retry=retry_if_exception_type(RateLimitError),
+    wait=wait_random_exponential(min=1, max=60),
+    stop=stop_after_attempt(6),
+    before_sleep=before_sleep_log(logger.logger, logging.WARN),
+)
 def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
     """Use ChatGPT to generate a summary of an image."""
     # initialize the Azure OpenAI Model
