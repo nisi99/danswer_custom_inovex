@@ -88,3 +88,6 @@ HARD_DELETE_CHATS = False
 
 # Internet Search
 BING_API_KEY = os.environ.get("BING_API_KEY") or None
+
+# Custom Prompt for Image Summarization
+SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT") or None

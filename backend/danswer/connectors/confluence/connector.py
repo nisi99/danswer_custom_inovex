@@ -30,6 +30,7 @@ from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
 from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_RAW_IMAGE
 from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
+from danswer.configs.chat_configs import SYSTEM_PROMPT
 from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
@@ -879,7 +880,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 f"Folgend ist XML-Quelltext der Seite:\n\n"
             ) + confluence_xml
 
-            summary = summarize_image(image_data, image_context)
+            summary = summarize_image(image_data, image_context, SYSTEM_PROMPT)
 
             base64_image = base64.b64encode(image_data).decode("utf-8")
 

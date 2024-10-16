@@ -23,7 +23,7 @@ logger = setup_logger()
     stop=stop_after_attempt(6),
     before_sleep=before_sleep_log(logger.logger, logging.WARN),
 )
-def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
+def summarize_image(image_data: bytes, query: str | None = None, system_prompt: str | None = None) -> str | None:
     """Use ChatGPT to generate a summary of an image."""
     # initialize the Azure OpenAI Model
 
@@ -36,18 +36,20 @@ def summarize_image(image_data: bytes, query: str | None = None) -> str | None:
 
     if not query:
         query = "Summarize the content and the subject of the picture."
+    if not system_prompt:
+        system_prompt = """
+            You are an assistant for summarizing images for retrieval.
+            Summarize the content of the following image and be as precise as possible.
+            The summary will be embedded and used to retrieve the original image.
+            Therefore, write a concise summary of the image that is optimized for retrieval.
+        """
 
     res = model.chat.completions.create(
         model=deployment_name,
         messages=[
             {
                 "role": "system",
-                "content": """
-                    You are an assistant for summarizing images for retrieval.
-                    Summarize the content of the following image and be as precise as possible.
-                    The summary will be embedded and used to retrieve the original image.
-                    Therefore, write a concise summary of the image that is optimized for retrieval.
-                """,
+                "content": system_prompt,
             },
             {
                 "role": "user",
