@@ -848,7 +848,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
         page_id = page["id"]
         confluence_xml = page["body"]["storage"]["value"]
-
+        logger.info(f"page_id = {page_id}")
         attachments = cls._get_embedded_image_attachments(
             confluence_client, confluence_xml, page_id
         )
@@ -931,6 +931,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             in [
                 tag.find(attrs={"ac:name": "imageAttachmentId"}).string
                 for tag in gliffy_macro_tags
+                if tag.find(attrs={"ac:name": "imageAttachmentId"}) is not None
             ]
         ]
 
