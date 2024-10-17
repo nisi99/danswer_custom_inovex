@@ -30,7 +30,7 @@ from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
 from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_RAW_IMAGE
 from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
-from danswer.configs.chat_configs import SYSTEM_PROMPT
+from danswer.configs.chat_configs import SYSTEM_PROMPT, USER_PROMPT
 from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.rate_limit_handler import (
     make_confluence_call_handle_rate_limit,
@@ -675,7 +675,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
                 # get summaries of images from page
                 page_images = asyncio.run(
-                    self._summarize_page_images(page, self.confluence_client)
+                    self._summarize_page_images(page, self.confluence_client, USER_PROMPT)
                 )
                 # add tag to flag summaries (needed to switch between base and multimodal danswer)
                 doc_metadata["is_image_summary"] = "True"
@@ -842,7 +842,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
 
     @classmethod
     async def _summarize_page_images(
-        cls, page: Dict[str, Any], confluence_client: Confluence
+        cls, page: Dict[str, Any], confluence_client: Confluence, USER_PROMPT: str
     ) -> List[ImageSummarization]:
         """Create LLM summaries of all embedded (used) image attachments on the given page"""
 
@@ -853,7 +853,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             confluence_client, confluence_xml, page_id
         )
 
-        async def summarize_attachment(attachment):
+        async def summarize_attachment(attachment, USER_PROMPT):
             title = attachment["title"]
             download_link = ConfluenceConnector._attachment_to_download_link(
                 confluence_client, attachment
@@ -873,12 +873,8 @@ class ConfluenceConnector(LoadConnector, PollConnector):
                 return None
 
             # TODO: use english?
-            image_context = (
-                f"Das Bild hat den Dateinamen '{title}' "
-                f"und ist auf einer Confluence Seite mit dem Titel '{page['title']}' eingebettet."
-                f"Beschreibe präzise und prägnant, was das Bild im Kontext der Seite zeigt und wozu es dient."
-                f"Folgend ist XML-Quelltext der Seite:\n\n"
-            ) + confluence_xml
+            USER_PROMPT = USER_PROMPT.format(title=title, page_title=page['title'])
+            image_context = USER_PROMPT + confluence_xml
 
             summary = summarize_image(image_data, image_context, SYSTEM_PROMPT)
 
@@ -893,7 +889,7 @@ class ConfluenceConnector(LoadConnector, PollConnector):
             )
 
         results = await asyncio.gather(
-            *[summarize_attachment(attachment) for attachment in attachments]
+            *[summarize_attachment(attachment, USER_PROMPT) for attachment in attachments]
         )
 
         return [result for result in results if result is not None]

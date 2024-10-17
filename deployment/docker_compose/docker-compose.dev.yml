@@ -89,6 +89,7 @@ services:
       - MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE=${MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:-}
       # (optional) Custom Prompt for Image Summarization
       - SYSTEM_PROMPT=${SYSTEM_PROMPT:-}
+      - USER_PROMPT=${USER_PROMPT:-}
       
       # Enterprise Edition only
       - ENABLE_PAID_ENTERPRISE_EDITION_FEATURES=${ENABLE_PAID_ENTERPRISE_EDITION_FEATURES:-false}
@@ -207,6 +208,7 @@ services:
       - MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE=${MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:-}
       # (optional) Custom Prompt for Image Summarization
       - SYSTEM_PROMPT=${SYSTEM_PROMPT:-}
+      - USER_PROMPT=${USER_PROMPT:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     logging:
