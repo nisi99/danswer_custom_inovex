@@ -3,7 +3,7 @@ import logging
 import os
 from io import BytesIO
 
-from openai import AzureOpenAI
+from openai import AzureOpenAI, BadRequestError
 from openai import RateLimitError
 from PIL import Image
 from tenacity import before_sleep_log
@@ -44,26 +44,31 @@ def summarize_image(image_data: bytes, query: str | None = None, system_prompt: 
             Therefore, write a concise summary of the image that is optimized for retrieval.
         """
 
-    res = model.chat.completions.create(
-        model=deployment_name,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": query},
-                    {"type": "image_url", "image_url": {"url": encoded_image}},
-                ],
-            },
-        ],
-        temperature=0.0,
-    )
-    summary = res.choices[0].message.content
+    try:
+        res = model.chat.completions.create(
+            model=deployment_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": query},
+                        {"type": "image_url", "image_url": {"url": encoded_image}},
+                    ],
+                },
+            ],
+            temperature=0.0,
+        )
+        summary = res.choices[0].message.content
 
-    return summary
+        return summary
+
+    except BadRequestError as e:
+        logger.warning(f"BadRequestError: {e}")
+
 
 
 deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
