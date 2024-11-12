@@ -16,7 +16,7 @@ import { usePopup } from "@/components/admin/connectors/Popup";
 import CreateCredential from "./actions/CreateCredential";
 import { CCPairFullInfo } from "@/app/admin/connector/[ccPairId]/types";
 import ModifyCredential from "./actions/ModifyCredential";
-import { Text } from "@tremor/react";
+import Text from "@/components/ui/text";
 import {
   buildCCPairInfoUrl,
   buildSimilarCredentialInfoURL,
@@ -28,7 +28,6 @@ import {
   ConfluenceCredentialJson,
   Credential,
 } from "@/lib/connectors/credentials";
-import { UserGroup } from "@/lib/types"; // Added this import
 
 export default function CredentialSection({
   ccPair,

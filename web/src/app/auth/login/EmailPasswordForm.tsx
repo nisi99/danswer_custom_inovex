@@ -3,7 +3,7 @@
 import { TextFormField } from "@/components/admin/connectors/Field";
 import { usePopup } from "@/components/admin/connectors/Popup";
 import { basicLogin, basicSignup } from "@/lib/user";
-import { Button } from "@tremor/react";
+import { Button } from "@/components/ui/button";
 import { Form, Formik } from "formik";
 import { useRouter } from "next/navigation";
 import * as Yup from "yup";
@@ -72,6 +72,8 @@ export function EmailPasswordForm({
             let errorMsg = "Unknown error";
             if (errorDetail === "LOGIN_BAD_CREDENTIALS") {
               errorMsg = "Invalid email or password";
+            } else if (errorDetail === "NO_WEB_LOGIN_AND_HAS_NO_PASSWORD") {
+              errorMsg = "Create an account to set a password";
             }
             setPopup({
               type: "error",

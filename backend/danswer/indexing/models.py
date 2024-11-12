@@ -56,6 +56,8 @@ class IndexChunk(DocAwareChunk):
     title_embedding: Embedding | None
 
 
+# TODO(rkuo): currently, this extra metadata sent during indexing is just for speed,
+# but full consistency happens on background sync
 class DocMetadataAwareIndexChunk(IndexChunk):
     """An `IndexChunk` that contains all necessary metadata to be indexed. This includes
     the following:
@@ -68,6 +70,7 @@ class DocMetadataAwareIndexChunk(IndexChunk):
            negative -> ranked lower.
     """
 
+    tenant_id: str | None = None
     access: "DocumentAccess"
     document_sets: set[str]
     boost: int
@@ -79,6 +82,7 @@ class DocMetadataAwareIndexChunk(IndexChunk):
         access: "DocumentAccess",
         document_sets: set[str],
         boost: int,
+        tenant_id: str | None,
     ) -> "DocMetadataAwareIndexChunk":
         index_chunk_data = index_chunk.model_dump()
         return cls(
@@ -86,10 +90,12 @@ class DocMetadataAwareIndexChunk(IndexChunk):
             access=access,
             document_sets=document_sets,
             boost=boost,
+            tenant_id=tenant_id,
         )
 
 
 class EmbeddingModelDetail(BaseModel):
+    id: int | None = None
     model_name: str
     normalize: bool
     query_prefix: str | None
@@ -107,6 +113,7 @@ class EmbeddingModelDetail(BaseModel):
         search_settings: "SearchSettings",
     ) -> "EmbeddingModelDetail":
         return cls(
+            id=search_settings.id,
             model_name=search_settings.model_name,
             normalize=search_settings.normalize,
             query_prefix=search_settings.query_prefix,

@@ -13,7 +13,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@radix-ui/react-tooltip";
+} from "@/components/ui/tooltip";
 
 interface Item {
   name: string | JSX.Element;
@@ -36,7 +36,7 @@ export function AdminSidebar({ collections }: { collections: Collection[] }) {
   const enterpriseSettings = combinedSettings.enterpriseSettings;
 
   return (
-    <div className="pl-0">
+    <div className="text-text-settings-sidebar pl-0">
       <nav className="space-y-2">
         <div className="w-full justify-center mb-4 flex">
           <div className="w-52">
@@ -55,7 +55,7 @@ export function AdminSidebar({ collections }: { collections: Collection[] }) {
                 <div className="flex-grow min-w-0 my-auto">
                   {enterpriseSettings && enterpriseSettings.application_name ? (
                     <div className="w-full">
-                      <HeaderTitle>
+                      <HeaderTitle backgroundToggled={true}>
                         {enterpriseSettings.application_name}
                       </HeaderTitle>
                       {!NEXT_PUBLIC_DO_NOT_USE_TOGGLE_OFF_DANSWER_POWERED && (
@@ -65,7 +65,7 @@ export function AdminSidebar({ collections }: { collections: Collection[] }) {
                       )}
                     </div>
                   ) : (
-                    <HeaderTitle>Danswer</HeaderTitle>
+                    <HeaderTitle backgroundToggled={true}>Danswer</HeaderTitle>
                   )}
                 </div>
               </div>
@@ -73,8 +73,8 @@ export function AdminSidebar({ collections }: { collections: Collection[] }) {
           </div>
         </div>
         <div className="flex w-full justify-center">
-          <Link href={"/chat"}>
-            <button className="text-sm flex items-center block w-52 py-2.5 flex px-2 text-left bg-background-200 hover:bg-background-200/80 cursor-pointer rounded">
+          <Link href={settings.default_page == "chat" ? "/chat" : "/search"}>
+            <button className="text-sm flex items-center block w-52 py-2.5 flex px-2 text-left text-text-back-button bg-background-back-button hover:bg-opacity-80 cursor-pointer rounded">
               <BackIcon className="my-auto" size={18} />
               <p className="ml-1 break-words line-clamp-2 ellipsis leading-none">
                 Back to{" "}
@@ -89,13 +89,13 @@ export function AdminSidebar({ collections }: { collections: Collection[] }) {
             className="flex flex-col items-center justify-center w-full"
             key={collectionInd}
           >
-            <h2 className="text-xs text-strong w-52 font-bold pb-2">
+            <h2 className="text-xs text-text-settings-sidebar-strong w-52 font-bold pb-2">
               <div>{collection.name}</div>
             </h2>
             {collection.items.map((item) => (
               <Link key={item.link} href={item.link}>
                 <button
-                  className={`  text-sm block  flex gap-x-2 items-center w-52 py-2.5 px-2 text-left hover:bg-hover rounded`}
+                  className={`text-sm block flex gap-x-2 items-center w-52 py-2.5 px-2 text-left hover:bg-background-settings-hover rounded`}
                 >
                   {item.name}
                   {item.error && (
@@ -105,9 +105,7 @@ export function AdminSidebar({ collections }: { collections: Collection[] }) {
                           <WarningCircle size={18} className="text-error" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p className="max-w-xs text-text-100 mb-1 p-2 rounded-lg bg-background-900">
-                            Navigate here to update your search settings
-                          </p>
+                          Navigate here to update your search settings
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>

@@ -1,13 +1,17 @@
 import React, { useRef, useState } from "react";
 import { Modal } from "@/components/Modal";
-import { Button, Text, Callout, Subtitle, Divider } from "@tremor/react";
-import { Label, TextFormField } from "@/components/admin/connectors/Field";
+import { Callout } from "@/components/ui/callout";
+import Text from "@/components/ui/text";
+import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/admin/connectors/Field";
 import { CloudEmbeddingProvider } from "../../../../components/embedding/interfaces";
 import {
   EMBEDDING_PROVIDERS_ADMIN_URL,
   LLM_PROVIDERS_ADMIN_URL,
 } from "../../configuration/llm/constants";
 import { mutate } from "swr";
+import { testEmbedding } from "../pages/utils";
 
 export function ChangeCredentialsModal({
   provider,
@@ -16,6 +20,7 @@ export function ChangeCredentialsModal({
   onDeleted,
   useFileUpload,
   isProxy = false,
+  isAzure = false,
 }: {
   provider: CloudEmbeddingProvider;
   onConfirm: () => void;
@@ -23,8 +28,12 @@ export function ChangeCredentialsModal({
   onDeleted: () => void;
   useFileUpload: boolean;
   isProxy?: boolean;
+  isAzure?: boolean;
 }) {
-  const [apiKeyOrUrl, setApiKeyOrUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
+  const [modelName, setModelName] = useState("");
+
   const [testError, setTestError] = useState<string>("");
   const [fileName, setFileName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,7 +61,7 @@ export function ChangeCredentialsModal({
         let jsonContent;
         try {
           jsonContent = JSON.parse(fileContent);
-          setApiKeyOrUrl(JSON.stringify(jsonContent));
+          setApiKey(JSON.stringify(jsonContent));
         } catch (parseError) {
           throw new Error(
             "Failed to parse JSON file. Please ensure it's a valid JSON."
@@ -64,7 +73,7 @@ export function ChangeCredentialsModal({
             ? error.message
             : "An unknown error occurred while processing the file."
         );
-        setApiKeyOrUrl("");
+        setApiKey("");
         clearFileInput();
       }
     }
@@ -101,17 +110,18 @@ export function ChangeCredentialsModal({
 
   const handleSubmit = async () => {
     setTestError("");
+    const normalizedProviderType = provider.provider_type
+      .toLowerCase()
+      .split(" ")[0];
+
     try {
-      const testResponse = await fetch("/api/admin/embedding/test-embedding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider_type: provider.provider_type.toLowerCase().split(" ")[0],
-          [isProxy ? "api_url" : "api_key"]: apiKeyOrUrl,
-          [isProxy ? "api_key" : "api_url"]: isProxy
-            ? provider.api_key
-            : provider.api_url,
-        }),
+      const testResponse = await testEmbedding({
+        provider_type: normalizedProviderType,
+        modelName,
+        apiKey,
+        apiUrl,
+        apiVersion: null,
+        deploymentName: null,
       });
 
       if (!testResponse.ok) {
@@ -123,8 +133,9 @@ export function ChangeCredentialsModal({
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider_type: provider.provider_type.toLowerCase().split(" ")[0],
-          [isProxy ? "api_url" : "api_key"]: apiKeyOrUrl,
+          provider_type: normalizedProviderType,
+          api_key: apiKey,
+          api_url: apiUrl,
           is_default_provider: false,
           is_configured: true,
         }),
@@ -134,7 +145,9 @@ export function ChangeCredentialsModal({
         const errorData = await updateResponse.json();
         throw new Error(
           errorData.detail ||
-            `Failed to update provider- check your ${isProxy ? "API URL" : "API key"}`
+            `Failed to update provider- check your ${
+              isProxy ? "API URL" : "API key"
+            }`
         );
       }
 
@@ -145,94 +158,146 @@ export function ChangeCredentialsModal({
       );
     }
   };
-
   return (
     <Modal
       width="max-w-3xl"
       icon={provider.icon}
-      title={`Modify your ${provider.provider_type} ${isProxy ? "URL" : "key"}`}
+      title={`Modify your ${provider.provider_type} ${
+        isProxy ? "Configuration" : "key"
+      }`}
       onOutsideClick={onCancel}
     >
-      <div className="mb-4">
-        <Subtitle className="font-bold text-lg">
-          Want to swap out your {isProxy ? "URL" : "key"}?
-        </Subtitle>
-        <a
-          href={provider.apiLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline cursor-pointer mt-2 mb-4"
-        >
-          Visit API
-        </a>
+      <>
+        {!isAzure && (
+          <>
+            <p className="mb-4">
+              You can modify your configuration by providing a new API key
+              {isProxy ? " or API URL." : "."}
+            </p>
 
-        <div className="flex flex-col mt-4 gap-y-2">
-          {useFileUpload ? (
-            <>
-              <Label>Upload JSON File</Label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={handleFileUpload}
-                className="text-lg w-full p-1"
-              />
-              {fileName && <p>Uploaded file: {fileName}</p>}
-            </>
-          ) : (
-            <>
-              <input
-                className={`
-                    border 
-                    border-border 
-                    rounded 
-                    w-full 
-                    py-2 
-                    px-3 
-                    bg-background-emphasis
-                `}
-                value={apiKeyOrUrl}
-                onChange={(e: any) => setApiKeyOrUrl(e.target.value)}
-                placeholder={`Paste your ${isProxy ? "API URL" : "API key"} here`}
-              />
-            </>
-          )}
-        </div>
+            <div className="mb-4 flex flex-col gap-y-2">
+              <Label className="mt-2">API Key</Label>
+              {useFileUpload ? (
+                <>
+                  <Label className="mt-2">Upload JSON File</Label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleFileUpload}
+                    className="text-lg w-full p-1"
+                  />
+                  {fileName && <p>Uploaded file: {fileName}</p>}
+                </>
+              ) : (
+                <>
+                  <input
+                    className={`
+                        border 
+                        border-border 
+                        rounded 
+                        w-full 
+                        py-2 
+                        px-3 
+                        bg-background-emphasis
+                    `}
+                    value={apiKey}
+                    onChange={(e: any) => setApiKey(e.target.value)}
+                    placeholder="Paste your API key here"
+                  />
+                </>
+              )}
 
-        {testError && (
-          <Callout title="Error" color="red" className="mt-4">
-            {testError}
-          </Callout>
+              {isProxy && (
+                <>
+                  <Label className="mt-2">API URL</Label>
+
+                  <input
+                    className={`
+                        border 
+                        border-border 
+                        rounded 
+                        w-full 
+                        py-2 
+                        px-3 
+                        bg-background-emphasis
+                    `}
+                    value={apiUrl}
+                    onChange={(e: any) => setApiUrl(e.target.value)}
+                    placeholder="Paste your API URL here"
+                  />
+
+                  {deletionError && (
+                    <Callout type="danger" title="Error" className="mt-4">
+                      {deletionError}
+                    </Callout>
+                  )}
+
+                  <div>
+                    <Label className="mt-2">Test Model</Label>
+                    <p>
+                      Since you are using a liteLLM proxy, we&apos;ll need a
+                      model name to test the connection with.
+                    </p>
+                  </div>
+                  <input
+                    className={`
+                     border 
+                     border-border 
+                     rounded 
+                     w-full 
+                     py-2 
+                     px-3 
+                     bg-background-emphasis
+                 `}
+                    value={modelName}
+                    onChange={(e: any) => setModelName(e.target.value)}
+                    placeholder="Paste your model name here"
+                  />
+                </>
+              )}
+
+              {testError && (
+                <Callout type="danger" title="Error" className="my-4">
+                  {testError}
+                </Callout>
+              )}
+
+              <Button
+                className="mr-auto mt-4"
+                variant="submit"
+                onClick={() => handleSubmit()}
+                disabled={!apiKey}
+              >
+                Update Configuration
+              </Button>
+
+              <Separator />
+            </div>
+          </>
         )}
 
-        <div className="flex mt-4 justify-between">
-          <Button
-            color="blue"
-            onClick={() => handleSubmit()}
-            disabled={!apiKeyOrUrl}
-          >
-            Swap {isProxy ? "URL" : "Key"}
-          </Button>
-        </div>
-        <Divider />
-
-        <Subtitle className="mt-4 font-bold text-lg mb-2">
-          You can also delete your {isProxy ? "URL" : "key"}.
-        </Subtitle>
+        <Text className="mt-4 font-bold text-lg mb-2">
+          You can delete your configuration.
+        </Text>
         <Text className="mb-2">
           This is only possible if you have already switched to a different
           embedding type!
         </Text>
 
-        <Button onClick={handleDelete} color="red">
-          Delete {isProxy ? "URL" : "key"}
+        <Button
+          className="mr-auto"
+          onClick={handleDelete}
+          variant="destructive"
+        >
+          Delete Configuration
         </Button>
         {deletionError && (
-          <Callout title="Error" color="red" className="mt-4">
+          <Callout type="danger" title="Error" className="mt-4">
             {deletionError}
           </Callout>
         )}
-      </div>
+      </>
     </Modal>
   );
 }

@@ -16,6 +16,7 @@ from danswer.configs.model_configs import (
 )
 from danswer.configs.model_configs import DOC_EMBEDDING_CONTEXT_SIZE
 from danswer.db.models import SearchSettings
+from danswer.indexing.indexing_heartbeat import Heartbeat
 from danswer.natural_language_processing.utils import get_tokenizer
 from danswer.natural_language_processing.utils import tokenizer_trim_content
 from danswer.utils.logger import setup_logger
@@ -24,6 +25,8 @@ from shared_configs.configs import MODEL_SERVER_PORT
 from shared_configs.enums import EmbeddingProvider
 from shared_configs.enums import EmbedTextType
 from shared_configs.enums import RerankerProvider
+from shared_configs.model_server_models import ConnectorClassificationRequest
+from shared_configs.model_server_models import ConnectorClassificationResponse
 from shared_configs.model_server_models import Embedding
 from shared_configs.model_server_models import EmbedRequest
 from shared_configs.model_server_models import EmbedResponse
@@ -47,23 +50,26 @@ def clean_model_name(model_str: str) -> str:
     return model_str.replace("/", "_").replace("-", "_").replace(".", "_")
 
 
-_WHITELIST = set(
-    " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\n\t"
-)
 _INITIAL_FILTER = re.compile(
     "["
-    "\U00000080-\U0000FFFF"  # All Unicode characters beyond ASCII
-    "\U00010000-\U0010FFFF"  # All Unicode characters in supplementary planes
+    "\U0000FFF0-\U0000FFFF"  # Specials
+    "\U0001F000-\U0001F9FF"  # Emoticons
+    "\U00002000-\U0000206F"  # General Punctuation
+    "\U00002190-\U000021FF"  # Arrows
+    "\U00002700-\U000027BF"  # Dingbats
     "]+",
     flags=re.UNICODE,
 )
 
 
 def clean_openai_text(text: str) -> str:
-    # First, remove all weird characters
+    # Remove specific Unicode ranges that might cause issues
     cleaned = _INITIAL_FILTER.sub("", text)
-    # Then, keep only whitelisted characters
-    return "".join(char for char in cleaned if char in _WHITELIST)
+
+    # Remove any control characters except for newline and tab
+    cleaned = "".join(ch for ch in cleaned if ch >= " " or ch in "\n\t")
+
+    return cleaned
 
 
 def build_model_server_url(
@@ -93,6 +99,9 @@ class EmbeddingModel:
         api_url: str | None,
         provider_type: EmbeddingProvider | None,
         retrim_content: bool = False,
+        heartbeat: Heartbeat | None = None,
+        api_version: str | None = None,
+        deployment_name: str | None = None,
     ) -> None:
         self.api_key = api_key
         self.provider_type = provider_type
@@ -102,9 +111,12 @@ class EmbeddingModel:
         self.model_name = model_name
         self.retrim_content = retrim_content
         self.api_url = api_url
+        self.api_version = api_version
+        self.deployment_name = deployment_name
         self.tokenizer = get_tokenizer(
             model_name=model_name, provider_type=provider_type
         )
+        self.heartbeat = heartbeat
 
         model_server_url = build_model_server_url(server_host, server_port)
         self.embed_server_endpoint = f"{model_server_url}/encoder/bi-encoder-embed"
@@ -152,6 +164,8 @@ class EmbeddingModel:
             embed_request = EmbedRequest(
                 model_name=self.model_name,
                 texts=text_batch,
+                api_version=self.api_version,
+                deployment_name=self.deployment_name,
                 max_context_length=max_seq_length,
                 normalize_embeddings=self.normalize,
                 api_key=self.api_key,
@@ -164,6 +178,9 @@ class EmbeddingModel:
 
             response = self._make_model_server_request(embed_request)
             embeddings.extend(response.embeddings)
+
+            if self.heartbeat:
+                self.heartbeat.heartbeat()
         return embeddings
 
     def encode(
@@ -231,6 +248,8 @@ class EmbeddingModel:
             provider_type=search_settings.provider_type,
             api_url=search_settings.api_url,
             retrim_content=retrim_content,
+            api_version=search_settings.api_version,
+            deployment_name=search_settings.deployment_name,
         )
 
 
@@ -240,6 +259,7 @@ class RerankingModel:
         model_name: str,
         provider_type: RerankerProvider | None,
         api_key: str | None,
+        api_url: str | None,
         model_server_host: str = MODEL_SERVER_HOST,
         model_server_port: int = MODEL_SERVER_PORT,
     ) -> None:
@@ -248,6 +268,7 @@ class RerankingModel:
         self.model_name = model_name
         self.provider_type = provider_type
         self.api_key = api_key
+        self.api_url = api_url
 
     def predict(self, query: str, passages: list[str]) -> list[float]:
         rerank_request = RerankRequest(
@@ -256,6 +277,7 @@ class RerankingModel:
             model_name=self.model_name,
             provider_type=self.provider_type,
             api_key=self.api_key,
+            api_url=self.api_url,
         )
 
         response = requests.post(
@@ -301,6 +323,37 @@ class QueryAnalysisModel:
         return response_model.is_keyword, response_model.keywords
 
 
+class ConnectorClassificationModel:
+    def __init__(
+        self,
+        model_server_host: str = MODEL_SERVER_HOST,
+        model_server_port: int = MODEL_SERVER_PORT,
+    ):
+        model_server_url = build_model_server_url(model_server_host, model_server_port)
+        self.connector_classification_endpoint = (
+            model_server_url + "/custom/connector-classification"
+        )
+
+    def predict(
+        self,
+        query: str,
+        available_connectors: list[str],
+    ) -> list[str]:
+        connector_classification_request = ConnectorClassificationRequest(
+            available_connectors=available_connectors,
+            query=query,
+        )
+        response = requests.post(
+            self.connector_classification_endpoint,
+            json=connector_classification_request.dict(),
+        )
+        response.raise_for_status()
+
+        response_model = ConnectorClassificationResponse(**response.json())
+
+        return response_model.connectors
+
+
 def warm_up_retry(
     func: Callable[..., Any],
     tries: int = 20,
@@ -316,8 +369,8 @@ def warm_up_retry(
                 return func(*args, **kwargs)
             except Exception as e:
                 exceptions.append(e)
-                logger.exception(
-                    f"Attempt {attempt + 1} failed; retrying in {delay} seconds..."
+                logger.info(
+                    f"Attempt {attempt + 1}/{tries} failed; retrying in {delay} seconds..."
                 )
                 time.sleep(delay)
         raise Exception(f"All retries failed: {exceptions}")
@@ -367,6 +420,7 @@ def warm_up_cross_encoder(
     reranking_model = RerankingModel(
         model_name=rerank_model_name,
         provider_type=None,
+        api_url=None,
         api_key=None,
     )
 

@@ -16,6 +16,9 @@ export enum ChatSessionSharedStatus {
   Public = "public",
 }
 
+// The number of messages to buffer on the client side.
+export const BUFFER_COUNT = 35;
+
 export interface RetrievalDetails {
   run_search: "always" | "never" | "auto";
   real_time: boolean;
@@ -29,6 +32,7 @@ export enum ChatFileType {
   IMAGE = "image",
   DOCUMENT = "document",
   PLAIN_TEXT = "plain_text",
+  CSV = "csv",
 }
 
 export interface FileDescriptor {
@@ -57,7 +61,7 @@ export interface ToolCallFinalResult {
 }
 
 export interface ChatSession {
-  id: number;
+  id: string;
   name: string;
   persona_id: number;
   time_created: string;
@@ -67,7 +71,7 @@ export interface ChatSession {
 }
 
 export interface SearchSession {
-  search_session_id: number;
+  search_session_id: string;
   documents: SearchDanswerDocument[];
   messages: BackendMessage[];
   description: string;
@@ -82,7 +86,7 @@ export interface Message {
   documents?: DanswerDocument[] | null;
   citations?: CitationMap;
   files: FileDescriptor[];
-  toolCalls: ToolCallMetadata[];
+  toolCall: ToolCallMetadata | null;
   // for rebuilding the message tree
   parentMessageId: number | null;
   childrenMessageIds?: number[];
@@ -94,7 +98,7 @@ export interface Message {
 }
 
 export interface BackendChatSession {
-  chat_session_id: number;
+  chat_session_id: string;
   description: string;
   persona_id: number;
   persona_name: string;
@@ -107,7 +111,7 @@ export interface BackendChatSession {
 export interface BackendMessage {
   message_id: number;
   comments: any;
-  chat_session_id: number;
+  chat_session_id: string;
   parent_message: number | null;
   latest_child_message: number | null;
   message: string;
@@ -117,7 +121,7 @@ export interface BackendMessage {
   time_sent: string;
   citations: CitationMap;
   files: FileDescriptor[];
-  tool_calls: ToolCallFinalResult[];
+  tool_call: ToolCallFinalResult | null;
   alternate_assistant_id?: number | null;
   overridden_model?: string;
 }
@@ -132,7 +136,7 @@ export interface DocumentsResponse {
   rephrased_query: string | null;
 }
 
-export interface ImageGenerationDisplay {
+export interface FileChatDisplay {
   file_ids: string[];
 }
 

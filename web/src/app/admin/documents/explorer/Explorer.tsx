@@ -2,7 +2,7 @@
 
 import { adminSearch } from "./lib";
 import { MagnifyingGlass } from "@phosphor-icons/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DanswerDocument } from "@/lib/search/interfaces";
 import { buildDocumentSummaryDisplay } from "@/components/search/DocumentDisplay";
 import { CustomCheckbox } from "@/components/CustomCheckbox";
@@ -121,19 +121,27 @@ export function Explorer({
 
   const filterManager = useFilters();
 
-  const onSearch = async (query: string) => {
-    const filters = buildFilters(
-      filterManager.selectedSources,
+  const onSearch = useCallback(
+    async (query: string) => {
+      const filters = buildFilters(
+        filterManager.selectedSources,
+        filterManager.selectedDocumentSets,
+        filterManager.timeRange,
+        filterManager.selectedTags
+      );
+      const results = await adminSearch(query, filters);
+      if (results.ok) {
+        setResults((await results.json()).documents);
+      }
+      setTimeoutId(null);
+    },
+    [
       filterManager.selectedDocumentSets,
+      filterManager.selectedSources,
       filterManager.timeRange,
-      filterManager.selectedTags
-    );
-    const results = await adminSearch(query, filters);
-    if (results.ok) {
-      setResults((await results.json()).documents);
-    }
-    setTimeoutId(null);
-  };
+      filterManager.selectedTags,
+    ]
+  );
 
   useEffect(() => {
     if (timeoutId !== null) {
@@ -211,7 +219,7 @@ export function Explorer({
       )}
       {!query && (
         <div className="flex text-emphasis mt-3">
-          Search for a document above to modify it&apos;s boost or hide it from
+          Search for a document above to modify its boost or hide it from
           searches.
         </div>
       )}

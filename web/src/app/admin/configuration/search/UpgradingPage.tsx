@@ -1,8 +1,14 @@
 import { ThreeDotsLoader } from "@/components/Loading";
 import { Modal } from "@/components/Modal";
 import { errorHandlingFetcher } from "@/lib/fetcher";
-import { ConnectorIndexingStatus, ValidStatuses } from "@/lib/types";
-import { Button, Text, Title } from "@tremor/react";
+import {
+  ConnectorIndexingStatus,
+  FailedConnectorIndexingStatus,
+  ValidStatuses,
+} from "@/lib/types";
+import Text from "@/components/ui/text";
+import Title from "@/components/ui/title";
+import { Button } from "@/components/ui/button";
 import { useMemo, useState } from "react";
 import useSWR, { mutate } from "swr";
 import { ReindexingProgressTable } from "../../../../components/embedding/ReindexingProgressTable";
@@ -12,6 +18,8 @@ import {
   HostedEmbeddingModel,
 } from "../../../../components/embedding/interfaces";
 import { Connector } from "@/lib/connectors/connectors";
+import { FailedReIndexAttempts } from "@/components/embedding/FailedReIndexAttempts";
+import { usePopup } from "@/components/admin/connectors/Popup";
 
 export default function UpgradingPage({
   futureEmbeddingModel,
@@ -20,17 +28,26 @@ export default function UpgradingPage({
 }) {
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
 
-  const { data: connectors } = useSWR<Connector<any>[]>(
-    "/api/manage/connector",
-    errorHandlingFetcher,
-    { refreshInterval: 5000 } // 5 seconds
-  );
+  const { setPopup, popup } = usePopup();
+  const { data: connectors, isLoading: isLoadingConnectors } = useSWR<
+    Connector<any>[]
+  >("/api/manage/connector", errorHandlingFetcher, {
+    refreshInterval: 5000, // 5 seconds
+  });
 
   const {
     data: ongoingReIndexingStatus,
     isLoading: isLoadingOngoingReIndexingStatus,
   } = useSWR<ConnectorIndexingStatus<any, any>[]>(
     "/api/manage/admin/connector/indexing-status?secondary_index=true",
+    errorHandlingFetcher,
+    { refreshInterval: 5000 } // 5 seconds
+  );
+
+  const { data: failedIndexingStatus } = useSWR<
+    FailedConnectorIndexingStatus[]
+  >(
+    "/api/manage/admin/connector/failed-indexing-status?secondary_index=true",
     errorHandlingFetcher,
     { refreshInterval: 5000 } // 5 seconds
   );
@@ -48,13 +65,16 @@ export default function UpgradingPage({
     }
     setIsCancelling(false);
   };
-  const statusOrder: Record<ValidStatuses, number> = {
-    failed: 0,
-    completed_with_errors: 1,
-    not_started: 2,
-    in_progress: 3,
-    success: 4,
-  };
+  const statusOrder: Record<ValidStatuses, number> = useMemo(
+    () => ({
+      failed: 0,
+      completed_with_errors: 1,
+      not_started: 2,
+      in_progress: 3,
+      success: 4,
+    }),
+    []
+  );
 
   const sortedReindexingProgress = useMemo(() => {
     return [...(ongoingReIndexingStatus || [])].sort((a, b) => {
@@ -72,8 +92,13 @@ export default function UpgradingPage({
     });
   }, [ongoingReIndexingStatus]);
 
+  if (isLoadingConnectors || isLoadingOngoingReIndexingStatus) {
+    return <ThreeDotsLoader />;
+  }
+
   return (
     <>
+      {popup}
       {isCancelling && (
         <Modal
           onOutsideClick={() => setIsCancelling(false)}
@@ -88,7 +113,7 @@ export default function UpgradingPage({
               be lost.
             </div>
             <div className="flex">
-              <Button onClick={onCancel} className="mt-3 mx-auto" color="green">
+              <Button onClick={onCancel} variant="submit">
                 Confirm
               </Button>
             </div>
@@ -96,7 +121,7 @@ export default function UpgradingPage({
         </Modal>
       )}
 
-      {futureEmbeddingModel && connectors && connectors.length > 0 && (
+      {futureEmbeddingModel && (
         <div>
           <Title className="mt-8">Current Upgrade Status</Title>
           <div className="mt-4">
@@ -106,30 +131,52 @@ export default function UpgradingPage({
             </div>
 
             <Button
-              color="red"
-              size="xs"
+              variant="destructive"
               className="mt-4"
               onClick={() => setIsCancelling(true)}
             >
               Cancel
             </Button>
 
-            <Text className="my-4">
-              The table below shows the re-indexing progress of all existing
-              connectors. Once all connectors have been re-indexed successfully,
-              the new model will be used for all search queries. Until then, we
-              will use the old model so that no downtime is necessary during
-              this transition.
-            </Text>
+            {connectors && connectors.length > 0 ? (
+              <>
+                {failedIndexingStatus && failedIndexingStatus.length > 0 && (
+                  <FailedReIndexAttempts
+                    failedIndexingStatuses={failedIndexingStatus}
+                    setPopup={setPopup}
+                  />
+                )}
 
-            {isLoadingOngoingReIndexingStatus ? (
-              <ThreeDotsLoader />
-            ) : sortedReindexingProgress ? (
-              <ReindexingProgressTable
-                reindexingProgress={sortedReindexingProgress}
-              />
+                <Text className="my-4">
+                  The table below shows the re-indexing progress of all existing
+                  connectors. Once all connectors have been re-indexed
+                  successfully, the new model will be used for all search
+                  queries. Until then, we will use the old model so that no
+                  downtime is necessary during this transition.
+                </Text>
+
+                {sortedReindexingProgress ? (
+                  <ReindexingProgressTable
+                    reindexingProgress={sortedReindexingProgress}
+                  />
+                ) : (
+                  <ErrorCallout errorTitle="Failed to fetch re-indexing progress" />
+                )}
+              </>
             ) : (
-              <ErrorCallout errorTitle="Failed to fetch re-indexing progress" />
+              <div className="mt-8 p-6 bg-background-100 border border-border-strong rounded-lg max-w-2xl">
+                <h3 className="text-lg font-semibold mb-2">
+                  Switching Embedding Models
+                </h3>
+                <p className="mb-4 text-text-800">
+                  You&apos;re currently switching embedding models, but there
+                  are no connectors to re-index. This means the transition will
+                  be quick and seamless!
+                </p>
+                <p className="text-text-600">
+                  The new model will be active soon.
+                </p>
+              </div>
             )}
           </div>
         </div>

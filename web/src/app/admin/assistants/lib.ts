@@ -1,4 +1,5 @@
-import { Persona, Prompt, StarterMessage } from "./interfaces";
+import { FullLLMProvider } from "../configuration/llm/interfaces";
+import { Persona, StarterMessage } from "./interfaces";
 
 interface PersonaCreationRequest {
   name: string;
@@ -20,6 +21,8 @@ interface PersonaCreationRequest {
   icon_shape: number | null;
   remove_image?: boolean;
   uploaded_image: File | null;
+  search_start_date: Date | null;
+  is_default_persona: boolean;
 }
 
 interface PersonaUpdateRequest {
@@ -44,6 +47,7 @@ interface PersonaUpdateRequest {
   icon_shape: number | null;
   remove_image: boolean;
   uploaded_image: File | null;
+  search_start_date: Date | null;
 }
 
 function promptNameFromPersonaName(personaName: string) {
@@ -122,7 +126,13 @@ function buildPersonaAPIBody(
     icon_color,
     icon_shape,
     remove_image,
+    search_start_date,
   } = creationRequest;
+
+  const is_default_persona =
+    "is_default_persona" in creationRequest
+      ? creationRequest.is_default_persona
+      : false;
 
   return {
     name,
@@ -144,6 +154,8 @@ function buildPersonaAPIBody(
     icon_shape,
     uploaded_image_id,
     remove_image,
+    search_start_date,
+    is_default_persona,
   };
 }
 
@@ -264,7 +276,7 @@ export function buildFinalPrompt(
   taskPrompt: string,
   retrievalDisabled: boolean
 ) {
-  let queryString = Object.entries({
+  const queryString = Object.entries({
     system_prompt: systemPrompt,
     task_prompt: taskPrompt,
     retrieval_disabled: retrievalDisabled,
@@ -318,3 +330,73 @@ export function personaComparator(a: Persona, b: Persona) {
 
   return closerToZeroNegativesFirstComparator(a.id, b.id);
 }
+
+export const togglePersonaVisibility = async (
+  personaId: number,
+  isVisible: boolean
+) => {
+  const response = await fetch(`/api/admin/persona/${personaId}/visible`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      is_visible: !isVisible,
+    }),
+  });
+  return response;
+};
+
+export const togglePersonaPublicStatus = async (
+  personaId: number,
+  isPublic: boolean
+) => {
+  const response = await fetch(`/api/persona/${personaId}/public`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      is_public: isPublic,
+    }),
+  });
+  return response;
+};
+
+export function checkPersonaRequiresImageGeneration(persona: Persona) {
+  for (const tool of persona.tools) {
+    if (tool.name === "ImageGenerationTool") {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function providersContainImageGeneratingSupport(
+  providers: FullLLMProvider[]
+) {
+  return providers.some((provider) => provider.provider === "openai");
+}
+
+// Default fallback persona for when we must display a persona
+// but assistant has access to none
+export const defaultPersona: Persona = {
+  id: 0,
+  name: "Default Assistant",
+  description: "A default assistant",
+  is_visible: true,
+  is_public: true,
+  builtin_persona: false,
+  is_default_persona: true,
+  users: [],
+  groups: [],
+  document_sets: [],
+  prompts: [],
+  tools: [],
+  starter_messages: null,
+  display_priority: null,
+  search_start_date: null,
+  owner: null,
+  icon_shape: 50910,
+  icon_color: "#FF6F6F",
+};

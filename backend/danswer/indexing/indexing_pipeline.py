@@ -17,7 +17,8 @@ from danswer.connectors.models import Document
 from danswer.connectors.models import IndexAttemptMetadata
 from danswer.db.document import get_documents_by_ids
 from danswer.db.document import prepare_to_modify_documents
-from danswer.db.document import update_docs_updated_at
+from danswer.db.document import update_docs_last_modified__no_commit
+from danswer.db.document import update_docs_updated_at__no_commit
 from danswer.db.document import upsert_documents_complete
 from danswer.db.document_set import fetch_document_sets_for_documents
 from danswer.db.index_attempt import create_index_attempt_error
@@ -29,6 +30,7 @@ from danswer.document_index.interfaces import DocumentIndex
 from danswer.document_index.interfaces import DocumentMetadata
 from danswer.indexing.chunker import Chunker
 from danswer.indexing.embedder import IndexingEmbedder
+from danswer.indexing.indexing_heartbeat import IndexingHeartbeat
 from danswer.indexing.models import DocAwareChunk
 from danswer.indexing.models import DocMetadataAwareIndexChunk
 from danswer.utils.logger import setup_logger
@@ -134,6 +136,7 @@ def index_doc_batch_with_handler(
     attempt_id: int | None,
     db_session: Session,
     ignore_time_skip: bool = False,
+    tenant_id: str | None = None,
 ) -> tuple[int, int]:
     r = (0, 0)
     try:
@@ -145,6 +148,7 @@ def index_doc_batch_with_handler(
             index_attempt_metadata=index_attempt_metadata,
             db_session=db_session,
             ignore_time_skip=ignore_time_skip,
+            tenant_id=tenant_id,
         )
     except Exception as e:
         if INDEXING_EXCEPTION_LIMIT == 0:
@@ -190,6 +194,8 @@ def index_doc_batch_prepare(
     db_session: Session,
     ignore_time_skip: bool = False,
 ) -> DocumentBatchPrepareContext | None:
+    """This sets up the documents in the relational DB (source of truth) for permissions, metadata, etc.
+    This preceeds indexing it into the actual document index."""
     documents = []
     for document in document_batch:
         empty_contents = not any(section.text.strip() for section in document.sections)
@@ -218,8 +224,8 @@ def index_doc_batch_prepare(
 
     document_ids = [document.id for document in documents]
     db_docs: list[DBDocument] = get_documents_by_ids(
-        document_ids=document_ids,
         db_session=db_session,
+        document_ids=document_ids,
     )
 
     # Skip indexing docs that don't have a newer updated at
@@ -258,12 +264,19 @@ def index_doc_batch(
     index_attempt_metadata: IndexAttemptMetadata,
     db_session: Session,
     ignore_time_skip: bool = False,
+    tenant_id: str | None = None,
 ) -> tuple[int, int]:
     """Takes different pieces of the indexing pipeline and applies it to a batch of documents
     Note that the documents should already be batched at this point so that it does not inflate the
     memory requirements"""
 
-    no_access = DocumentAccess.build([], [], False)
+    no_access = DocumentAccess.build(
+        user_emails=[],
+        user_groups=[],
+        external_user_emails=[],
+        external_user_group_ids=[],
+        is_public=False,
+    )
 
     ctx = index_doc_batch_prepare(
         document_batch=document_batch,
@@ -275,18 +288,10 @@ def index_doc_batch(
         return 0, 0
 
     logger.debug("Starting chunking")
-    chunks: list[DocAwareChunk] = []
-    for document in ctx.updatable_docs:
-        chunks.extend(chunker.chunk(document=document))
+    chunks: list[DocAwareChunk] = chunker.chunk(ctx.updatable_docs)
 
     logger.debug("Starting embedding")
-    chunks_with_embeddings = (
-        embedder.embed_chunks(
-            chunks=chunks,
-        )
-        if chunks
-        else []
-    )
+    chunks_with_embeddings = embedder.embed_chunks(chunks) if chunks else []
 
     updatable_ids = [doc.id for doc in ctx.updatable_docs]
 
@@ -294,9 +299,6 @@ def index_doc_batch(
     # NOTE: don't need to acquire till here, since this is when the actual race condition
     # with Vespa can occur.
     with prepare_to_modify_documents(db_session=db_session, document_ids=updatable_ids):
-        # Attach the latest status from Postgres (source of truth for access) to each
-        # chunk. This access status will be attached to each chunk in the document index
-        # TODO: attach document sets to the chunk based on the status of Postgres as well
         document_id_to_access_info = get_access_for_documents(
             document_ids=updatable_ids, db_session=db_session
         )
@@ -306,6 +308,12 @@ def index_doc_batch(
                 document_ids=updatable_ids, db_session=db_session
             )
         }
+
+        # we're concerned about race conditions where multiple simultaneous indexings might result
+        # in one set of metadata overwriting another one in vespa.
+        # we still write data here for immediate and most likely correct sync, but
+        # to resolve this, an update of the last modified field at the end of this loop
+        # always triggers a final metadata sync
         access_aware_chunks = [
             DocMetadataAwareIndexChunk.from_index_chunk(
                 index_chunk=chunk,
@@ -320,6 +328,7 @@ def index_doc_batch(
                     if chunk.source_document.id in ctx.id_to_db_doc_map
                     else DEFAULT_BOOST
                 ),
+                tenant_id=tenant_id,
             )
             for chunk in chunks_with_embeddings
         ]
@@ -337,16 +346,24 @@ def index_doc_batch(
             doc for doc in ctx.updatable_docs if doc.id in successful_doc_ids
         ]
 
-        # Update the time of latest version of the doc successfully indexed
+        last_modified_ids = []
         ids_to_new_updated_at = {}
         for doc in successful_docs:
+            last_modified_ids.append(doc.id)
+            # doc_updated_at is the connector source's idea of when the doc was last modified
             if doc.doc_updated_at is None:
                 continue
             ids_to_new_updated_at[doc.id] = doc.doc_updated_at
 
-        update_docs_updated_at(
+        update_docs_updated_at__no_commit(
             ids_to_new_updated_at=ids_to_new_updated_at, db_session=db_session
         )
+
+        update_docs_last_modified__no_commit(
+            document_ids=last_modified_ids, db_session=db_session
+        )
+
+        db_session.commit()
 
     return len([r for r in insertion_records if r.already_existed is False]), len(
         access_aware_chunks
@@ -361,6 +378,7 @@ def build_indexing_pipeline(
     chunker: Chunker | None = None,
     ignore_time_skip: bool = False,
     attempt_id: int | None = None,
+    tenant_id: str | None = None,
 ) -> IndexingPipelineProtocol:
     """Builds a pipeline which takes in a list (batch) of docs and indexes them."""
     search_settings = get_current_search_settings(db_session)
@@ -387,6 +405,13 @@ def build_indexing_pipeline(
         tokenizer=embedder.embedding_model.tokenizer,
         enable_multipass=multipass,
         enable_large_chunks=enable_large_chunks,
+        # after every doc, update status in case there are a bunch of
+        # really long docs
+        heartbeat=IndexingHeartbeat(
+            index_attempt_id=attempt_id, db_session=db_session, freq=1
+        )
+        if attempt_id
+        else None,
     )
 
     return partial(
@@ -397,4 +422,5 @@ def build_indexing_pipeline(
         ignore_time_skip=ignore_time_skip,
         attempt_id=attempt_id,
         db_session=db_session,
+        tenant_id=tenant_id,
     )

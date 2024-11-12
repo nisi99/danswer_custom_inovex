@@ -8,7 +8,7 @@ Edition features outside of personal development or testing purposes. Please rea
 founders@danswer.ai for more information. Please visit https://github.com/danswer-ai/danswer"
 
 # Default DANSWER_VERSION, typically overriden during builds by GitHub Actions.
-ARG DANSWER_VERSION=0.3-dev
+ARG DANSWER_VERSION=0.8-dev
 ENV DANSWER_VERSION=${DANSWER_VERSION}
 RUN echo "DANSWER_VERSION: ${DANSWER_VERSION}"
 
@@ -25,10 +25,10 @@ COPY . .
 RUN npm ci
 
 # needed to get the `standalone` dir we expect later
-ENV NEXT_PRIVATE_STANDALONE true
+ENV NEXT_PRIVATE_STANDALONE=true
 
 # Disable automatic telemetry collection
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Environment variables must be present at build time
 # https://github.com/vercel/next.js/discussions/14030
@@ -58,6 +58,17 @@ ENV NEXT_PUBLIC_DO_NOT_USE_TOGGLE_OFF_DANSWER_POWERED=${NEXT_PUBLIC_DO_NOT_USE_T
 ARG NEXT_PUBLIC_DISABLE_LOGOUT
 ENV NEXT_PUBLIC_DISABLE_LOGOUT=${NEXT_PUBLIC_DISABLE_LOGOUT}
 
+ARG NEXT_PUBLIC_CUSTOM_REFRESH_URL
+ENV NEXT_PUBLIC_CUSTOM_REFRESH_URL=${NEXT_PUBLIC_CUSTOM_REFRESH_URL}
+
+ARG NEXT_PUBLIC_POSTHOG_KEY
+ARG NEXT_PUBLIC_POSTHOG_HOST
+ENV NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+ENV NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
+
+ARG NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN} 
+
 RUN npx next build
 
 # Step 2. Production image, copy all the files and run next
@@ -73,7 +84,7 @@ RUN rm -rf /usr/local/lib/node_modules
 # ENV NODE_ENV production  
 
 # Disable automatic telemetry collection
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Don't run production as root
 RUN addgroup --system --gid 1001 nodejs
@@ -114,6 +125,18 @@ ENV NEXT_PUBLIC_DEFAULT_SIDEBAR_OPEN=${NEXT_PUBLIC_DEFAULT_SIDEBAR_OPEN}
 
 ARG NEXT_PUBLIC_DISABLE_LOGOUT
 ENV NEXT_PUBLIC_DISABLE_LOGOUT=${NEXT_PUBLIC_DISABLE_LOGOUT}
+
+ARG NEXT_PUBLIC_CUSTOM_REFRESH_URL
+ENV NEXT_PUBLIC_CUSTOM_REFRESH_URL=${NEXT_PUBLIC_CUSTOM_REFRESH_URL}
+
+
+ARG NEXT_PUBLIC_POSTHOG_KEY
+ARG NEXT_PUBLIC_POSTHOG_HOST
+ENV NEXT_PUBLIC_POSTHOG_KEY=${NEXT_PUBLIC_POSTHOG_KEY}
+ENV NEXT_PUBLIC_POSTHOG_HOST=${NEXT_PUBLIC_POSTHOG_HOST}
+ARG NEXT_PUBLIC_SENTRY_DSN
+ENV NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN} 
+
 
 # Note: Don't expose ports here, Compose will handle that for us if necessary. 
 # If you want to run this without compose, specify the ports to 

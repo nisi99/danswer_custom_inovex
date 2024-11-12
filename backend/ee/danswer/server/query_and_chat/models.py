@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel
 from pydantic import Field
 
@@ -8,7 +10,8 @@ from danswer.search.enums import SearchType
 from danswer.search.models import ChunkContext
 from danswer.search.models import RerankingDetails
 from danswer.search.models import RetrievalDetails
-from danswer.server.manage.models import StandardAnswer
+from danswer.search.models import SavedSearchDoc
+from ee.danswer.server.manage.models import StandardAnswer
 
 
 class StandardAnswerRequest(BaseModel):
@@ -35,7 +38,7 @@ class BasicCreateChatMessageRequest(ChunkContext):
     Note, for simplicity this option only allows for a single linear chain of messages
     """
 
-    chat_session_id: int
+    chat_session_id: UUID
     # New message contents
     message: str
     # Defaults to using retrieval with no additional filters
@@ -45,6 +48,9 @@ class BasicCreateChatMessageRequest(ChunkContext):
     query_override: str | None = None
     # If search_doc_ids provided, then retrieval options are unused
     search_doc_ids: list[int] | None = None
+    # only works if using an OpenAI model. See the following for more details:
+    # https://platform.openai.com/docs/guides/structured-outputs/introduction
+    structured_response_format: dict | None = None
 
 
 class BasicCreateChatMessageWithHistoryRequest(ChunkContext):
@@ -52,9 +58,14 @@ class BasicCreateChatMessageWithHistoryRequest(ChunkContext):
     messages: list[ThreadMessage]
     prompt_id: int | None
     persona_id: int
-    retrieval_options: RetrievalDetails = Field(default_factory=RetrievalDetails)
+    retrieval_options: RetrievalDetails | None = None
     query_override: str | None = None
     skip_rerank: bool | None = None
+    # If search_doc_ids provided, then retrieval options are unused
+    search_doc_ids: list[int] | None = None
+    # only works if using an OpenAI model. See the following for more details:
+    # https://platform.openai.com/docs/guides/structured-outputs/introduction
+    structured_response_format: dict | None = None
 
 
 class SimpleDoc(BaseModel):
@@ -71,7 +82,17 @@ class ChatBasicResponse(BaseModel):
     # This is built piece by piece, any of these can be None as the flow could break
     answer: str | None = None
     answer_citationless: str | None = None
-    simple_search_docs: list[SimpleDoc] | None = None
+
+    top_documents: list[SavedSearchDoc] | None = None
+
     error_msg: str | None = None
     message_id: int | None = None
+    llm_selected_doc_indices: list[int] | None = None
+    final_context_doc_indices: list[int] | None = None
+    # this is a map of the citation number to the document id
+    cited_documents: dict[int, str] | None = None
+
+    # FOR BACKWARDS COMPATIBILITY
+    # TODO: deprecate both of these
+    simple_search_docs: list[SimpleDoc] | None = None
     llm_chunks_indices: list[int] | None = None

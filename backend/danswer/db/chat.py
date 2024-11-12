@@ -3,7 +3,6 @@ from datetime import datetime
 from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import and_
 from sqlalchemy import delete
 from sqlalchemy import desc
 from sqlalchemy import func
@@ -44,7 +43,7 @@ logger = setup_logger()
 
 
 def get_chat_session_by_id(
-    chat_session_id: int,
+    chat_session_id: UUID,
     user_id: UUID | None,
     db_session: Session,
     include_deleted: bool = False,
@@ -87,29 +86,57 @@ def get_chat_sessions_by_slack_thread_id(
     return db_session.scalars(stmt).all()
 
 
-def get_first_messages_for_chat_sessions(
-    chat_session_ids: list[int], db_session: Session
-) -> dict[int, str]:
-    subquery = (
-        select(ChatMessage.chat_session_id, func.min(ChatMessage.id).label("min_id"))
+def get_valid_messages_from_query_sessions(
+    chat_session_ids: list[UUID],
+    db_session: Session,
+) -> dict[UUID, str]:
+    user_message_subquery = (
+        select(
+            ChatMessage.chat_session_id, func.min(ChatMessage.id).label("user_msg_id")
+        )
         .where(
-            and_(
-                ChatMessage.chat_session_id.in_(chat_session_ids),
-                ChatMessage.message_type == MessageType.USER,  # Select USER messages
-            )
+            ChatMessage.chat_session_id.in_(chat_session_ids),
+            ChatMessage.message_type == MessageType.USER,
         )
         .group_by(ChatMessage.chat_session_id)
         .subquery()
     )
 
-    query = select(ChatMessage.chat_session_id, ChatMessage.message).join(
-        subquery,
-        (ChatMessage.chat_session_id == subquery.c.chat_session_id)
-        & (ChatMessage.id == subquery.c.min_id),
+    assistant_message_subquery = (
+        select(
+            ChatMessage.chat_session_id,
+            func.min(ChatMessage.id).label("assistant_msg_id"),
+        )
+        .where(
+            ChatMessage.chat_session_id.in_(chat_session_ids),
+            ChatMessage.message_type == MessageType.ASSISTANT,
+        )
+        .group_by(ChatMessage.chat_session_id)
+        .subquery()
+    )
+
+    query = (
+        select(ChatMessage.chat_session_id, ChatMessage.message)
+        .join(
+            user_message_subquery,
+            ChatMessage.chat_session_id == user_message_subquery.c.chat_session_id,
+        )
+        .join(
+            assistant_message_subquery,
+            ChatMessage.chat_session_id == assistant_message_subquery.c.chat_session_id,
+        )
+        .join(
+            ChatMessage__SearchDoc,
+            ChatMessage__SearchDoc.chat_message_id
+            == assistant_message_subquery.c.assistant_msg_id,
+        )
+        .where(ChatMessage.id == user_message_subquery.c.user_msg_id)
     )
 
     first_messages = db_session.execute(query).all()
-    return dict([(row.chat_session_id, row.message) for row in first_messages])
+    logger.info(f"Retrieved {len(first_messages)} first messages with documents")
+
+    return {row.chat_session_id: row.message for row in first_messages}
 
 
 def get_chat_sessions_by_user(
@@ -169,7 +196,7 @@ def delete_orphaned_search_docs(db_session: Session) -> None:
 
 
 def delete_messages_and_files_from_chat_session(
-    chat_session_id: int, db_session: Session
+    chat_session_id: UUID, db_session: Session
 ) -> None:
     # Select messages older than cutoff_time with files
     messages_with_files = db_session.execute(
@@ -199,7 +226,7 @@ def create_chat_session(
     db_session: Session,
     description: str,
     user_id: UUID | None,
-    persona_id: int,
+    persona_id: int | None,  # Can be none if temporary persona is used
     llm_override: LLMOverride | None = None,
     prompt_override: PromptOverride | None = None,
     one_shot: bool = False,
@@ -226,7 +253,7 @@ def create_chat_session(
 def update_chat_session(
     db_session: Session,
     user_id: UUID | None,
-    chat_session_id: int,
+    chat_session_id: UUID,
     description: str | None = None,
     sharing_status: ChatSessionSharedStatus | None = None,
 ) -> ChatSession:
@@ -249,10 +276,17 @@ def update_chat_session(
 
 def delete_chat_session(
     user_id: UUID | None,
-    chat_session_id: int,
+    chat_session_id: UUID,
     db_session: Session,
     hard_delete: bool = HARD_DELETE_CHATS,
 ) -> None:
+    chat_session = get_chat_session_by_id(
+        chat_session_id=chat_session_id, user_id=user_id, db_session=db_session
+    )
+
+    if chat_session.deleted:
+        raise ValueError("Cannot delete an already deleted chat session")
+
     if hard_delete:
         delete_messages_and_files_from_chat_session(chat_session_id, db_session)
         db_session.execute(delete(ChatSession).where(ChatSession.id == chat_session_id))
@@ -303,7 +337,7 @@ def get_chat_message(
 
 
 def get_chat_messages_by_sessions(
-    chat_session_ids: list[int],
+    chat_session_ids: list[UUID],
     user_id: UUID | None,
     db_session: Session,
     skip_permission_check: bool = False,
@@ -336,7 +370,7 @@ def get_search_docs_for_chat_message(
 
 
 def get_chat_messages_by_session(
-    chat_session_id: int,
+    chat_session_id: UUID,
     user_id: UUID | None,
     db_session: Session,
     skip_permission_check: bool = False,
@@ -354,7 +388,7 @@ def get_chat_messages_by_session(
     )
 
     if prefetch_tool_calls:
-        stmt = stmt.options(joinedload(ChatMessage.tool_calls))
+        stmt = stmt.options(joinedload(ChatMessage.tool_call))
         result = db_session.scalars(stmt).unique().all()
     else:
         result = db_session.scalars(stmt).all()
@@ -363,7 +397,7 @@ def get_chat_messages_by_session(
 
 
 def get_or_create_root_message(
-    chat_session_id: int,
+    chat_session_id: UUID,
     db_session: Session,
 ) -> ChatMessage:
     try:
@@ -399,7 +433,7 @@ def get_or_create_root_message(
 
 def reserve_message_id(
     db_session: Session,
-    chat_session_id: int,
+    chat_session_id: UUID,
     parent_message: int,
     message_type: MessageType,
 ) -> int:
@@ -426,7 +460,7 @@ def reserve_message_id(
 
 
 def create_new_chat_message(
-    chat_session_id: int,
+    chat_session_id: UUID,
     parent_message: ChatMessage,
     message: str,
     prompt_id: int | None,
@@ -440,7 +474,7 @@ def create_new_chat_message(
     alternate_assistant_id: int | None = None,
     # Maps the citation number [n] to the DB SearchDoc
     citations: dict[int, int] | None = None,
-    tool_calls: list[ToolCall] | None = None,
+    tool_call: ToolCall | None = None,
     commit: bool = True,
     reserved_message_id: int | None = None,
     overridden_model: str | None = None,
@@ -460,7 +494,7 @@ def create_new_chat_message(
         existing_message.message_type = message_type
         existing_message.citations = citations
         existing_message.files = files
-        existing_message.tool_calls = tool_calls if tool_calls else []
+        existing_message.tool_call = tool_call
         existing_message.error = error
         existing_message.alternate_assistant_id = alternate_assistant_id
         existing_message.overridden_model = overridden_model
@@ -479,7 +513,7 @@ def create_new_chat_message(
             message_type=message_type,
             citations=citations,
             files=files,
-            tool_calls=tool_calls if tool_calls else [],
+            tool_call=tool_call,
             error=error,
             alternate_assistant_id=alternate_assistant_id,
             overridden_model=overridden_model,
@@ -564,6 +598,7 @@ def get_doc_query_identifiers_from_model(
     chat_session: ChatSession,
     user_id: UUID | None,
     db_session: Session,
+    enforce_chat_session_id_for_search_docs: bool,
 ) -> list[tuple[str, int]]:
     """Given a list of search_doc_ids"""
     search_docs = (
@@ -583,7 +618,8 @@ def get_doc_query_identifiers_from_model(
                 for doc in search_docs
             ]
         ):
-            raise ValueError("Invalid reference doc, not from this chat session.")
+            if enforce_chat_session_id_for_search_docs:
+                raise ValueError("Invalid reference doc, not from this chat session.")
     except IndexError:
         # This happens when the doc has no chat_messages associated with it.
         # which happens as an edge case where the chat message failed to save
@@ -713,14 +749,13 @@ def translate_db_message_to_chat_message_detail(
         time_sent=chat_message.time_sent,
         citations=chat_message.citations,
         files=chat_message.files or [],
-        tool_calls=[
-            ToolCallFinalResult(
-                tool_name=tool_call.tool_name,
-                tool_args=tool_call.tool_arguments,
-                tool_result=tool_call.tool_result,
-            )
-            for tool_call in chat_message.tool_calls
-        ],
+        tool_call=ToolCallFinalResult(
+            tool_name=chat_message.tool_call.tool_name,
+            tool_args=chat_message.tool_call.tool_arguments,
+            tool_result=chat_message.tool_call.tool_result,
+        )
+        if chat_message.tool_call
+        else None,
         alternate_assistant_id=chat_message.alternate_assistant_id,
         overridden_model=chat_message.overridden_model,
     )

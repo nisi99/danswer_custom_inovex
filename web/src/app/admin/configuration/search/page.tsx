@@ -3,14 +3,14 @@
 import { ThreeDotsLoader } from "@/components/Loading";
 import { AdminPageTitle } from "@/components/admin/Title";
 import { errorHandlingFetcher } from "@/lib/fetcher";
-import { Button, Card, Text, Title } from "@tremor/react";
+import Text from "@/components/ui/text";
+import Title from "@/components/ui/title";
+import { Button } from "@/components/ui/button";
 import useSWR from "swr";
 import { ModelPreview } from "../../../../components/embedding/ModelSelector";
 import {
-  AVAILABLE_CLOUD_PROVIDERS,
   HostedEmbeddingModel,
   CloudEmbeddingModel,
-  AVAILABLE_MODELS,
 } from "@/components/embedding/interfaces";
 
 import { ErrorCallout } from "@/components/ErrorCallout";
@@ -21,16 +21,25 @@ export interface EmbeddingDetails {
   default_model_id?: number;
   name: string;
 }
+
 import { EmbeddingIcon } from "@/components/icons/icons";
+import { usePopupFromQuery } from "@/components/popup/PopupFromQuery";
 
 import Link from "next/link";
 import { SavedSearchSettings } from "../../embeddings/interfaces";
 import UpgradingPage from "./UpgradingPage";
 import { useContext } from "react";
 import { SettingsContext } from "@/components/settings/SettingsProvider";
+import CardSection from "@/components/admin/CardSection";
 
 function Main() {
   const settings = useContext(SettingsContext);
+  const { popup: searchSettingsPopup } = usePopupFromQuery({
+    "search-settings": {
+      message: `Changed search settings successfully`,
+      type: "success",
+    },
+  });
   const {
     data: currentEmeddingModel,
     isLoading: isLoadingCurrentModel,
@@ -74,24 +83,9 @@ function Main() {
     return <ErrorCallout errorTitle="Failed to fetch embedding model status" />;
   }
 
-  const currentModelName = currentEmeddingModel?.model_name;
-  const AVAILABLE_CLOUD_PROVIDERS_FLATTENED = AVAILABLE_CLOUD_PROVIDERS.flatMap(
-    (provider) =>
-      provider.embedding_models.map((model) => ({
-        ...model,
-        provider_type: provider.provider_type,
-        model_name: model.model_name, // Ensure model_name is set for consistency
-      }))
-  );
-
-  const currentModel: CloudEmbeddingModel | HostedEmbeddingModel =
-    AVAILABLE_MODELS.find((model) => model.model_name === currentModelName) ||
-    AVAILABLE_CLOUD_PROVIDERS_FLATTENED.find(
-      (model) => model.model_name === currentEmeddingModel.model_name
-    )!;
-
   return (
     <div className="h-screen">
+      {searchSettingsPopup}
       {!futureEmbeddingModel ? (
         <>
           {settings?.settings.needs_reindexing && (
@@ -102,15 +96,15 @@ function Main() {
           )}
           <Title className="mb-6 mt-8 !text-2xl">Embedding Model</Title>
 
-          {currentModel ? (
-            <ModelPreview model={currentModel} display />
+          {currentEmeddingModel ? (
+            <ModelPreview model={currentEmeddingModel} display />
           ) : (
             <Title className="mt-8 mb-4">Choose your Embedding Model</Title>
           )}
 
           <Title className="mb-2 mt-8 !text-2xl">Post-processing</Title>
 
-          <Card className="!mr-auto mt-8 !w-96">
+          <CardSection className="!mr-auto mt-8 !w-96">
             {searchSettings && (
               <>
                 <div className="px-1 w-full rounded-lg">
@@ -163,10 +157,12 @@ function Main() {
                 </div>
               </>
             )}
-          </Card>
+          </CardSection>
 
           <Link href="/admin/embeddings">
-            <Button className="mt-8">Update Search Settings</Button>
+            <Button variant="navigate" className="mt-8">
+              Update Search Settings
+            </Button>
           </Link>
         </>
       ) : (

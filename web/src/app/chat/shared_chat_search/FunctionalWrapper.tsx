@@ -36,7 +36,7 @@ const ToggleSwitch = () => {
   };
 
   return (
-    <div className="bg-gray-100 mobile:mt-8 flex rounded-full p-1">
+    <div className="bg-background-toggle mobile:mt-8 flex rounded-full p-1">
       <div
         className={`absolute mobile:mt-8 top-1 bottom-1 ${
           activeTab === "chat" ? "w-[45%]" : "w-[50%]"
@@ -53,9 +53,14 @@ const ToggleSwitch = () => {
         onClick={() => handleTabChange("search")}
       >
         <SearchIcon size={16} className="mr-2" />
-        <div className="flex items-end">
+        <div className="flex  items-center">
           Search
-          <div className="ml-2 flex items-end">{commandSymbol}S</div>
+          <div className="ml-2 flex content-center">
+            <span className="leading-none pb-[1px] my-auto">
+              {commandSymbol}
+            </span>
+            <span className="my-auto">S</span>
+          </div>
         </div>
       </button>
       <button
@@ -69,7 +74,12 @@ const ToggleSwitch = () => {
         <ChatIcon size={16} className="mr-2" />
         <div className="items-end flex">
           Chat
-          <div className="ml-2 flex items-end">{commandSymbol}D</div>
+          <div className="ml-2 flex content-center">
+            <span className="leading-none pb-[1px] my-auto">
+              {commandSymbol}
+            </span>
+            <span className="my-auto">D</span>
+          </div>
         </div>
       </button>
     </div>
@@ -138,7 +148,9 @@ export default function FunctionalWrapper({
       {(!settings ||
         (settings.search_page_enabled && settings.chat_page_enabled)) && (
         <div
-          className={`mobile:hidden z-30 flex fixed ${chatBannerPresent ? (twoLines ? "top-20" : "top-14") : "top-4"} left-1/2 transform -translate-x-1/2`}
+          className={`mobile:hidden z-30 flex fixed ${
+            chatBannerPresent ? (twoLines ? "top-20" : "top-14") : "top-4"
+          } left-1/2 transform -translate-x-1/2`}
         >
           <div
             style={{ transition: "width 0.30s ease-out" }}

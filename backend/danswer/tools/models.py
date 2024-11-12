@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel
 from pydantic import model_validator
@@ -37,3 +38,12 @@ class ToolCallFinalResult(ToolCallKickoff):
     tool_result: Any = (
         None  # we would like to use JSON_ro, but can't due to its recursive nature
     )
+
+
+class DynamicSchemaInfo(BaseModel):
+    chat_session_id: UUID | None
+    message_id: int | None
+
+
+CHAT_SESSION_ID_PLACEHOLDER = "CHAT_SESSION_ID"
+MESSAGE_ID_PLACEHOLDER = "MESSAGE_ID"

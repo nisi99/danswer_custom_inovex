@@ -20,6 +20,8 @@ from pypdf.errors import PdfStreamError
 
 from danswer.configs.constants import DANSWER_METADATA_FILENAME
 from danswer.file_processing.html_utils import parse_html_page_basic
+from danswer.file_processing.unstructured import get_unstructured_api_key
+from danswer.file_processing.unstructured import unstructured_to_text
 from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -201,22 +203,29 @@ def read_pdf_file(
                     decrypt_success = pdf_reader.decrypt(pdf_pass) != 0
                 except Exception:
                     logger.error("Unable to decrypt pdf")
-            else:
-                logger.warning("No Password available to to decrypt pdf")
 
             if not decrypt_success:
                 # By user request, keep files that are unreadable just so they
                 # can be discoverable by title.
                 return "", metadata
+        elif pdf_reader.is_encrypted:
+            logger.warning("No Password available to decrypt pdf, returning empty")
+            return "", metadata
 
         # Extract metadata from the PDF, removing leading '/' from keys if present
         # This standardizes the metadata keys for consistency
         metadata = {}
         if pdf_reader.metadata is not None:
-            metadata = {
-                k[1:] if k.startswith("/") else k: v
-                for k, v in pdf_reader.metadata.items()
-            }
+            for key, value in pdf_reader.metadata.items():
+                clean_key = key.lstrip("/")
+                if isinstance(value, str) and value.strip():
+                    metadata[clean_key] = value
+
+                elif isinstance(value, list) and all(
+                    isinstance(item, str) for item in value
+                ):
+                    metadata[clean_key] = ", ".join(value)
+
         return (
             TEXT_SECTION_SEPARATOR.join(
                 page.extract_text() for page in pdf_reader.pages
@@ -234,9 +243,43 @@ def read_pdf_file(
 
 
 def docx_to_text(file: IO[Any]) -> str:
+    def is_simple_table(table: docx.table.Table) -> bool:
+        for row in table.rows:
+            # No omitted cells
+            if row.grid_cols_before > 0 or row.grid_cols_after > 0:
+                return False
+
+            # No nested tables
+            if any(cell.tables for cell in row.cells):
+                return False
+
+        return True
+
+    def extract_cell_text(cell: docx.table._Cell) -> str:
+        cell_paragraphs = [para.text.strip() for para in cell.paragraphs]
+        return " ".join(p for p in cell_paragraphs if p) or "N/A"
+
+    paragraphs = []
     doc = docx.Document(file)
-    full_text = [para.text for para in doc.paragraphs]
-    return TEXT_SECTION_SEPARATOR.join(full_text)
+    for item in doc.iter_inner_content():
+        if isinstance(item, docx.text.paragraph.Paragraph):
+            paragraphs.append(item.text)
+
+        elif isinstance(item, docx.table.Table):
+            if not item.rows or not is_simple_table(item):
+                continue
+
+            # Every row is a new line, joined with a single newline
+            table_content = "\n".join(
+                [
+                    ",\t".join(extract_cell_text(cell) for cell in row.cells)
+                    for row in item.rows
+                ]
+            )
+            paragraphs.append(table_content)
+
+    # Docx already has good spacing between paragraphs
+    return "\n".join(paragraphs)
 
 
 def pptx_to_text(file: IO[Any]) -> str:
@@ -291,9 +334,10 @@ def file_io_to_text(file: IO[Any]) -> str:
 
 
 def extract_file_text(
-    file_name: str | None,
     file: IO[Any],
+    file_name: str,
     break_on_unprocessable: bool = True,
+    extension: str | None = None,
 ) -> str:
     extension_to_function: dict[str, Callable[[IO[Any]], str]] = {
         ".pdf": pdf_to_text,
@@ -305,22 +349,29 @@ def extract_file_text(
         ".html": parse_html_page_basic,
     }
 
-    def _process_file() -> str:
-        if file_name:
-            extension = get_file_ext(file_name)
-            if check_file_ext_is_valid(extension):
-                return extension_to_function.get(extension, file_io_to_text)(file)
+    try:
+        if get_unstructured_api_key():
+            return unstructured_to_text(file, file_name)
 
-        # Either the file somehow has no name or the extension is not one that we are familiar with
+        if file_name or extension:
+            if extension is not None:
+                final_extension = extension
+            elif file_name is not None:
+                final_extension = get_file_ext(file_name)
+
+            if check_file_ext_is_valid(final_extension):
+                return extension_to_function.get(final_extension, file_io_to_text)(file)
+
+        # Either the file somehow has no name or the extension is not one that we recognize
         if is_text_file(file):
             return file_io_to_text(file)
 
         raise ValueError("Unknown file extension and unknown text encoding")
 
-    try:
-        return _process_file()
     except Exception as e:
         if break_on_unprocessable:
-            raise RuntimeError(f"Failed to process file: {str(e)}") from e
-        logger.warning(f"Failed to process file: {str(e)}")
+            raise RuntimeError(
+                f"Failed to process file {file_name or 'Unknown'}: {str(e)}"
+            ) from e
+        logger.warning(f"Failed to process file {file_name or 'Unknown'}: {str(e)}")
         return ""

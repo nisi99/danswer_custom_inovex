@@ -41,8 +41,8 @@ def _convert_driveitem_to_document(
     driveitem: DriveItem,
 ) -> Document:
     file_text = extract_file_text(
-        file_name=driveitem.name,
         file=io.BytesIO(driveitem.get_content().execute_query().value),
+        file_name=driveitem.name,
         break_on_unprocessable=False,
     )
 
@@ -137,7 +137,7 @@ class SharepointConnector(LoadConnector, PollConnector):
                     .execute_query()
                 ]
         else:
-            sites = self.graph_client.sites.get().execute_query()
+            sites = self.graph_client.sites.get_all().execute_query()
             self.site_data = [
                 SiteData(url=None, folder=None, sites=sites, driveitems=[])
             ]

@@ -10,11 +10,12 @@ from danswer.connectors.cross_connector_utils.miscellaneous_utils import (
     get_metadata_keys_to_ignore,
 )
 from danswer.connectors.models import Document
+from danswer.indexing.indexing_heartbeat import Heartbeat
 from danswer.indexing.models import DocAwareChunk
 from danswer.natural_language_processing.utils import BaseTokenizer
 from danswer.utils.logger import setup_logger
 from danswer.utils.text_processing import shared_precompare_cleanup
-
+from shared_configs.configs import STRICT_CHUNK_TOKEN_LIMIT
 
 # Not supporting overlaps, we need a clean combination of chunks and it is unclear if overlaps
 # actually help quality at all
@@ -25,6 +26,7 @@ CHUNK_OVERLAP = 0
 # could be another 128 tokens leaving 256 for the actual contents
 MAX_METADATA_PERCENTAGE = 0.25
 CHUNK_MIN_CONTENT = 256
+
 
 logger = setup_logger()
 
@@ -123,6 +125,7 @@ class Chunker:
         chunk_token_limit: int = DOC_EMBEDDING_CONTEXT_SIZE,
         chunk_overlap: int = CHUNK_OVERLAP,
         mini_chunk_size: int = MINI_CHUNK_SIZE,
+        heartbeat: Heartbeat | None = None,
     ) -> None:
         from llama_index.text_splitter import SentenceSplitter  # type: ignore
 
@@ -131,6 +134,7 @@ class Chunker:
         self.enable_multipass = enable_multipass
         self.enable_large_chunks = enable_large_chunks
         self.tokenizer = tokenizer
+        self.heartbeat = heartbeat
 
         self.blurb_splitter = SentenceSplitter(
             tokenizer=tokenizer.tokenize,
@@ -153,6 +157,24 @@ class Chunker:
             if enable_multipass
             else None
         )
+
+    def _split_oversized_chunk(self, text: str, content_token_limit: int) -> list[str]:
+        """
+        Splits the text into smaller chunks based on token count to ensure
+        no chunk exceeds the content_token_limit.
+        """
+        tokens = self.tokenizer.tokenize(text)
+        chunks = []
+        start = 0
+        total_tokens = len(tokens)
+        while start < total_tokens:
+            end = min(start + content_token_limit, total_tokens)
+            token_chunk = tokens[start:end]
+            # Join the tokens to reconstruct the text
+            chunk_text = " ".join(token_chunk)
+            chunks.append(chunk_text)
+            start = end
+        return chunks
 
     def _extract_blurb(self, text: str) -> str:
         texts = self.blurb_splitter.split_text(text)
@@ -215,14 +237,42 @@ class Chunker:
                     chunk_text = ""
 
                 split_texts = self.chunk_splitter.split_text(section_text)
+
                 for i, split_text in enumerate(split_texts):
-                    chunks.append(
-                        _create_chunk(
-                            text=split_text,
-                            links={0: section_link_text},
-                            is_continuation=(i != 0),
+                    split_token_count = len(self.tokenizer.tokenize(split_text))
+
+                    if STRICT_CHUNK_TOKEN_LIMIT:
+                        split_token_count = len(self.tokenizer.tokenize(split_text))
+                        if split_token_count > content_token_limit:
+                            # Further split the oversized chunk
+                            smaller_chunks = self._split_oversized_chunk(
+                                split_text, content_token_limit
+                            )
+                            for i, small_chunk in enumerate(smaller_chunks):
+                                chunks.append(
+                                    _create_chunk(
+                                        text=small_chunk,
+                                        links={0: section_link_text},
+                                        is_continuation=(i != 0),
+                                    )
+                                )
+                        else:
+                            chunks.append(
+                                _create_chunk(
+                                    text=split_text,
+                                    links={0: section_link_text},
+                                )
+                            )
+
+                    else:
+                        chunks.append(
+                            _create_chunk(
+                                text=split_text,
+                                links={0: section_link_text},
+                                is_continuation=(i != 0),
+                            )
                         )
-                    )
+
                 continue
 
             current_token_count = len(self.tokenizer.tokenize(chunk_text))
@@ -256,7 +306,7 @@ class Chunker:
         # If the chunk does not have any useable content, it will not be indexed
         return chunks
 
-    def chunk(self, document: Document) -> list[DocAwareChunk]:
+    def _handle_single_document(self, document: Document) -> list[DocAwareChunk]:
         # Specifically for reproducing an issue with gmail
         if document.source == DocumentSource.GMAIL:
             logger.debug(f"Chunking {document.semantic_identifier}")
@@ -303,3 +353,13 @@ class Chunker:
             normal_chunks.extend(large_chunks)
 
         return normal_chunks
+
+    def chunk(self, documents: list[Document]) -> list[DocAwareChunk]:
+        final_chunks: list[DocAwareChunk] = []
+        for document in documents:
+            final_chunks.extend(self._handle_single_document(document))
+
+            if self.heartbeat:
+                self.heartbeat.heartbeat()
+
+        return final_chunks

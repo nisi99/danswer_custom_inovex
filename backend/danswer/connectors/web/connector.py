@@ -1,6 +1,8 @@
 import io
 import ipaddress
 import socket
+from datetime import datetime
+from datetime import timezone
 from enum import Enum
 from typing import Any
 from typing import cast
@@ -126,6 +128,9 @@ def get_internal_links(
         if not href:
             continue
 
+        # Account for malformed backslashes in URLs
+        href = href.replace("\\", "/")
+
         if should_ignore_pound and "#" in href:
             href = href.split("#")[0]
 
@@ -201,6 +206,15 @@ def _read_urls_file(location: str) -> list[str]:
     with open(location, "r") as f:
         urls = [_ensure_valid_url(line.strip()) for line in f if line.strip()]
     return urls
+
+
+def _get_datetime_from_last_modified_header(last_modified: str) -> datetime | None:
+    try:
+        return datetime.strptime(last_modified, "%a, %d %b %Y %H:%M:%S %Z").replace(
+            tzinfo=timezone.utc
+        )
+    except (ValueError, TypeError):
+        return None
 
 
 class WebConnector(LoadConnector):
@@ -288,6 +302,7 @@ class WebConnector(LoadConnector):
                     page_text, metadata = read_pdf_file(
                         file=io.BytesIO(response.content)
                     )
+                    last_modified = response.headers.get("Last-Modified")
 
                     doc_batch.append(
                         Document(
@@ -296,12 +311,22 @@ class WebConnector(LoadConnector):
                             source=DocumentSource.WEB,
                             semantic_identifier=current_url.split("/")[-1],
                             metadata=metadata,
+                            doc_updated_at=_get_datetime_from_last_modified_header(
+                                last_modified
+                            )
+                            if last_modified
+                            else None,
                         )
                     )
                     continue
 
                 page = context.new_page()
                 page_response = page.goto(current_url)
+                last_modified = (
+                    page_response.header_value("Last-Modified")
+                    if page_response
+                    else None
+                )
                 final_page = page.url
                 if final_page != current_url:
                     logger.info(f"Redirected to {final_page}")
@@ -337,13 +362,18 @@ class WebConnector(LoadConnector):
                         source=DocumentSource.WEB,
                         semantic_identifier=parsed_html.title or current_url,
                         metadata={},
+                        doc_updated_at=_get_datetime_from_last_modified_header(
+                            last_modified
+                        )
+                        if last_modified
+                        else None,
                     )
                 )
 
                 page.close()
             except Exception as e:
                 last_error = f"Failed to fetch '{current_url}': {e}"
-                logger.error(last_error)
+                logger.exception(last_error)
                 playwright.stop()
                 restart_playwright = True
                 continue

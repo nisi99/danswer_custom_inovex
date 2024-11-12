@@ -83,8 +83,10 @@ def _convert_litellm_message_to_langchain_message(
                     "args": json.loads(tool_call.function.arguments),
                     "id": tool_call.id,
                 }
-                for tool_call in (tool_calls if tool_calls else [])
-            ],
+                for tool_call in tool_calls
+            ]
+            if tool_calls
+            else [],
         )
     elif role == "system":
         return SystemMessage(content=content)
@@ -109,7 +111,7 @@ def _convert_message_to_dict(message: BaseMessage) -> dict:
                         "arguments": json.dumps(tool_call["args"]),
                     },
                     "type": "function",
-                    "index": 0,  # only support a single tool call atm
+                    "index": tool_call.get("index", 0),
                 }
                 for tool_call in message.tool_calls
             ]
@@ -158,12 +160,13 @@ def _convert_delta_to_message_chunk(
         if tool_calls:
             tool_call = tool_calls[0]
             tool_name = tool_call.function.name or (curr_msg and curr_msg.name) or ""
+            idx = tool_call.index
 
             tool_call_chunk = ToolCallChunk(
                 name=tool_name,
                 id=tool_call.id,
                 args=tool_call.function.arguments,
-                index=0,  # only support a single tool call atm
+                index=idx,
             )
 
             return AIMessageChunk(
@@ -204,6 +207,7 @@ class DefaultMultiLLM(LLM):
         model_name: str,
         api_base: str | None = None,
         api_version: str | None = None,
+        deployment_name: str | None = None,
         max_output_tokens: int | None = None,
         custom_llm_provider: str | None = None,
         temperature: float = GEN_AI_TEMPERATURE,
@@ -215,6 +219,7 @@ class DefaultMultiLLM(LLM):
         self._model_version = model_name
         self._temperature = temperature
         self._api_key = api_key
+        self._deployment_name = deployment_name
         self._api_base = api_base
         self._api_version = api_version
         self._custom_llm_provider = custom_llm_provider
@@ -277,23 +282,27 @@ class DefaultMultiLLM(LLM):
         tools: list[dict] | None,
         tool_choice: ToolChoiceOptions | None,
         stream: bool,
+        structured_response_format: dict | None = None,
     ) -> litellm.ModelResponse | litellm.CustomStreamWrapper:
         if isinstance(prompt, list):
             prompt = [
                 _convert_message_to_dict(msg) if isinstance(msg, BaseMessage) else msg
                 for msg in prompt
             ]
+
         elif isinstance(prompt, str):
             prompt = [_convert_message_to_dict(HumanMessage(content=prompt))]
 
         try:
             return litellm.completion(
                 # model choice
-                model=f"{self.config.model_provider}/{self.config.model_name}",
-                api_key=self._api_key,
-                base_url=self._api_base,
-                api_version=self._api_version,
-                custom_llm_provider=self._custom_llm_provider,
+                model=f"{self.config.model_provider}/{self.config.deployment_name or self.config.model_name}",
+                # NOTE: have to pass in None instead of empty string for these
+                # otherwise litellm can have some issues with bedrock
+                api_key=self._api_key or None,
+                base_url=self._api_base or None,
+                api_version=self._api_version or None,
+                custom_llm_provider=self._custom_llm_provider or None,
                 # actual input
                 messages=prompt,
                 tools=tools,
@@ -307,6 +316,11 @@ class DefaultMultiLLM(LLM):
                 # NOTE: we can't pass this in if tools are not specified
                 # or else OpenAI throws an error
                 **({"parallel_tool_calls": False} if tools else {}),
+                **(
+                    {"response_format": structured_response_format}
+                    if structured_response_format
+                    else {}
+                ),
                 **self._model_kwargs,
             )
         except Exception as e:
@@ -322,6 +336,7 @@ class DefaultMultiLLM(LLM):
             api_key=self._api_key,
             api_base=self._api_base,
             api_version=self._api_version,
+            deployment_name=self._deployment_name,
         )
 
     def _invoke_implementation(
@@ -329,12 +344,16 @@ class DefaultMultiLLM(LLM):
         prompt: LanguageModelInput,
         tools: list[dict] | None = None,
         tool_choice: ToolChoiceOptions | None = None,
+        structured_response_format: dict | None = None,
     ) -> BaseMessage:
         if LOG_DANSWER_MODEL_INTERACTIONS:
             self.log_model_configs()
 
         response = cast(
-            litellm.ModelResponse, self._completion(prompt, tools, tool_choice, False)
+            litellm.ModelResponse,
+            self._completion(
+                prompt, tools, tool_choice, False, structured_response_format
+            ),
         )
         choice = response.choices[0]
         if hasattr(choice, "message"):
@@ -347,18 +366,21 @@ class DefaultMultiLLM(LLM):
         prompt: LanguageModelInput,
         tools: list[dict] | None = None,
         tool_choice: ToolChoiceOptions | None = None,
+        structured_response_format: dict | None = None,
     ) -> Iterator[BaseMessage]:
         if LOG_DANSWER_MODEL_INTERACTIONS:
             self.log_model_configs()
 
         if DISABLE_LITELLM_STREAMING:
-            yield self.invoke(prompt)
+            yield self.invoke(prompt, tools, tool_choice, structured_response_format)
             return
 
         output = None
         response = cast(
             litellm.CustomStreamWrapper,
-            self._completion(prompt, tools, tool_choice, True),
+            self._completion(
+                prompt, tools, tool_choice, True, structured_response_format
+            ),
         )
         try:
             for part in response:

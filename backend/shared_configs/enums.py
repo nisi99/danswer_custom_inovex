@@ -7,10 +7,12 @@ class EmbeddingProvider(str, Enum):
     VOYAGE = "voyage"
     GOOGLE = "google"
     LITELLM = "litellm"
+    AZURE = "azure"
 
 
 class RerankerProvider(str, Enum):
     COHERE = "cohere"
+    LITELLM = "litellm"
 
 
 class EmbedTextType(str, Enum):

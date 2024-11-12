@@ -18,10 +18,12 @@ from danswer.llm.interfaces import LLMConfig
 from danswer.llm.utils import build_content_with_imgs
 from danswer.llm.utils import check_number_of_tokens
 from danswer.llm.utils import get_max_input_tokens
+from danswer.llm.utils import message_to_prompt_and_imgs
 from danswer.prompts.chat_prompts import REQUIRE_CITATION_STATEMENT
 from danswer.prompts.constants import DEFAULT_IGNORE_STATEMENT
 from danswer.prompts.direct_qa_prompts import CITATIONS_PROMPT
 from danswer.prompts.direct_qa_prompts import CITATIONS_PROMPT_FOR_TOOL_CALLING
+from danswer.prompts.direct_qa_prompts import HISTORY_BLOCK
 from danswer.prompts.prompt_utils import add_date_time_to_prompt
 from danswer.prompts.prompt_utils import build_complete_context_str
 from danswer.prompts.prompt_utils import build_complete_context_str_eval_format
@@ -35,7 +37,6 @@ from danswer.prompts.token_counts import CITATION_STATEMENT_TOKEN_CNT
 from danswer.prompts.token_counts import LANGUAGE_HINT_TOKEN_CNT
 from danswer.search.models import InferenceChunk
 from danswer.utils.logger import setup_logger
-
 
 logger = setup_logger()
 
@@ -137,10 +138,9 @@ def build_citations_system_message(
 
 
 def build_citations_user_message(
-    question: str,
+    message: HumanMessage,
     prompt_config: PromptConfig,
     context_docs: list[LlmDoc] | list[InferenceChunk],
-    files: list[InMemoryChatFile],
     all_doc_useful: bool,
     history_message: str = "",
 ) -> HumanMessage:
@@ -148,6 +148,13 @@ def build_citations_user_message(
     task_prompt_with_reminder = build_task_prompt_reminders(
         prompt=prompt_config, use_language_hint=bool(multilingual_expansion)
     )
+
+    history_block = (
+        HISTORY_BLOCK.format(history_str=history_message) + "\n"
+        if history_message
+        else ""
+    )
+    query, img_urls = message_to_prompt_and_imgs(message)
 
     if context_docs:
         # if top chunk contains image --> add image to user prompt
@@ -187,20 +194,23 @@ def build_citations_user_message(
             optional_ignore_statement=optional_ignore,
             context_docs_str=context_docs_str,
             task_prompt=task_prompt_with_reminder,
-            user_query=question,
-            history_block=history_message,
+            user_query=query,
+            history_block=history_block,
         )
 
     else:
         # if no context docs provided, assume we're in the tool calling flow
         user_prompt = CITATIONS_PROMPT_FOR_TOOL_CALLING.format(
             task_prompt=task_prompt_with_reminder,
-            user_query=question,
+            user_query=query,
+            history_block=history_block,
         )
 
     user_prompt = user_prompt.strip()
     user_msg = HumanMessage(
-        content=build_content_with_imgs(user_prompt, files) if files else user_prompt
+        content=build_content_with_imgs(user_prompt, img_urls=img_urls)
+        if img_urls
+        else user_prompt
     )
 
     return user_msg

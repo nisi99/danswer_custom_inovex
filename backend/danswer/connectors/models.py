@@ -14,7 +14,7 @@ class InputType(str, Enum):
     LOAD_STATE = "load_state"  # e.g. loading a current full state or a save state, such as from a file
     POLL = "poll"  # e.g. calling an API to get all documents in the last hour
     EVENT = "event"  # e.g. registered an endpoint as a listener, and processing connector events
-    PRUNE = "prune"
+    SLIM_RETRIEVAL = "slim_retrieval"
 
 
 class ConnectorMissingCredentialError(PermissionError):
@@ -113,6 +113,9 @@ class DocumentBase(BaseModel):
     # The default title is semantic_identifier though unless otherwise specified
     title: str | None = None
     from_ingestion_api: bool = False
+    # Anything else that may be useful that is specific to this particular connector type that other
+    # parts of the code may need. If you're unsure, this can be left as None
+    additional_info: Any = None
 
     def get_title_for_document_index(
         self,
@@ -164,6 +167,11 @@ class Document(DocumentBase):
             title=base.title,
             from_ingestion_api=base.from_ingestion_api,
         )
+
+
+class SlimDocument(BaseModel):
+    id: str
+    perm_sync_data: Any | None = None
 
 
 class DocumentErrorSummary(BaseModel):

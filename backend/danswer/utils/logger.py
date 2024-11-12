@@ -1,3 +1,4 @@
+import contextvars
 import logging
 import os
 from collections.abc import MutableMapping
@@ -7,10 +8,18 @@ from typing import Any
 from shared_configs.configs import DEV_LOGGING_ENABLED
 from shared_configs.configs import LOG_FILE_NAME
 from shared_configs.configs import LOG_LEVEL
+from shared_configs.configs import MULTI_TENANT
+from shared_configs.configs import POSTGRES_DEFAULT_SCHEMA
 from shared_configs.configs import SLACK_CHANNEL_ID
+from shared_configs.configs import TENANT_ID_PREFIX
+from shared_configs.contextvars import CURRENT_TENANT_ID_CONTEXTVAR
 
 
 logging.addLevelName(logging.INFO + 5, "NOTICE")
+
+pruning_ctx: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+    "pruning_ctx", default=dict()
+)
 
 
 class IndexAttemptSingleton:
@@ -19,14 +28,22 @@ class IndexAttemptSingleton:
     main background job (scheduler), etc. this will not be used."""
 
     _INDEX_ATTEMPT_ID: None | int = None
+    _CONNECTOR_CREDENTIAL_PAIR_ID: None | int = None
 
     @classmethod
     def get_index_attempt_id(cls) -> None | int:
         return cls._INDEX_ATTEMPT_ID
 
     @classmethod
-    def set_index_attempt_id(cls, index_attempt_id: int) -> None:
+    def get_connector_credential_pair_id(cls) -> None | int:
+        return cls._CONNECTOR_CREDENTIAL_PAIR_ID
+
+    @classmethod
+    def set_cc_and_index_id(
+        cls, index_attempt_id: int, connector_credential_pair_id: int
+    ) -> None:
         cls._INDEX_ATTEMPT_ID = index_attempt_id
+        cls._CONNECTOR_CREDENTIAL_PAIR_ID = connector_credential_pair_id
 
 
 def get_log_level_from_str(log_level_str: str = LOG_LEVEL) -> int:
@@ -49,9 +66,34 @@ class DanswerLoggingAdapter(logging.LoggerAdapter):
     ) -> tuple[str, MutableMapping[str, Any]]:
         # If this is an indexing job, add the attempt ID to the log message
         # This helps filter the logs for this specific indexing
-        attempt_id = IndexAttemptSingleton.get_index_attempt_id()
-        if attempt_id is not None:
-            msg = f"[Attempt ID: {attempt_id}] {msg}"
+        index_attempt_id = IndexAttemptSingleton.get_index_attempt_id()
+        cc_pair_id = IndexAttemptSingleton.get_connector_credential_pair_id()
+
+        pruning_ctx_dict = pruning_ctx.get()
+        if len(pruning_ctx_dict) > 0:
+            if "request_id" in pruning_ctx_dict:
+                msg = f"[Prune: {pruning_ctx_dict['request_id']}] {msg}"
+
+            if "cc_pair_id" in pruning_ctx_dict:
+                msg = f"[CC Pair: {pruning_ctx_dict['cc_pair_id']}] {msg}"
+        else:
+            if index_attempt_id is not None:
+                msg = f"[Index Attempt: {index_attempt_id}] {msg}"
+
+            if cc_pair_id is not None:
+                msg = f"[CC Pair: {cc_pair_id}] {msg}"
+
+        # Add tenant information if it differs from default
+        # This will always be the case for authenticated API requests
+        if MULTI_TENANT:
+            tenant_id = CURRENT_TENANT_ID_CONTEXTVAR.get()
+            if tenant_id != POSTGRES_DEFAULT_SCHEMA:
+                # Strip tenant_ prefix and take first 8 chars for cleaner logs
+                tenant_display = tenant_id.removeprefix(TENANT_ID_PREFIX)
+                short_tenant = (
+                    tenant_display[:8] if len(tenant_display) > 8 else tenant_display
+                )
+                msg = f"[t:{short_tenant}] {msg}"
 
         # For Slack Bot, logs the channel relevant to the request
         channel_id = self.extra.get(SLACK_CHANNEL_ID) if self.extra else None
@@ -65,6 +107,16 @@ class DanswerLoggingAdapter(logging.LoggerAdapter):
         self.log(
             logging.getLevelName("NOTICE"), str(msg), *args, **kwargs, stacklevel=2
         )
+
+
+class PlainFormatter(logging.Formatter):
+    """Adds log levels."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        levelname = record.levelname
+        level_display = f"{levelname}:"
+        formatted_message = super().format(record)
+        return f"{level_display.ljust(9)} {formatted_message}"
 
 
 class ColoredFormatter(logging.Formatter):
@@ -101,6 +153,13 @@ def get_standard_formatter() -> ColoredFormatter:
     )
 
 
+DANSWER_DOCKER_ENV_STR = "DANSWER_RUNNING_IN_DOCKER"
+
+
+def is_running_in_container() -> bool:
+    return os.getenv(DANSWER_DOCKER_ENV_STR) == "true"
+
+
 def setup_logger(
     name: str = __name__,
     log_level: int = get_log_level_from_str(),
@@ -128,7 +187,7 @@ def setup_logger(
         uvicorn_logger.addHandler(handler)
         uvicorn_logger.setLevel(log_level)
 
-    is_containerized = os.path.exists("/.dockerenv")
+    is_containerized = is_running_in_container()
     if LOG_FILE_NAME and (is_containerized or DEV_LOGGING_ENABLED):
         log_levels = ["debug", "info", "notice"]
         for level in log_levels:
@@ -152,3 +211,25 @@ def setup_logger(
     logger.notice = lambda msg, *args, **kwargs: logger.log(logging.getLevelName("NOTICE"), msg, *args, **kwargs)  # type: ignore
 
     return DanswerLoggingAdapter(logger, extra=extra)
+
+
+def print_loggers() -> None:
+    """Print information about all loggers. Use to debug logging issues."""
+    root_logger = logging.getLogger()
+    loggers: list[logging.Logger | logging.PlaceHolder] = [root_logger]
+    loggers.extend(logging.Logger.manager.loggerDict.values())
+
+    for logger in loggers:
+        if isinstance(logger, logging.PlaceHolder):
+            # Skip placeholders that aren't actual loggers
+            continue
+
+        print(f"Logger: '{logger.name}' (Level: {logging.getLevelName(logger.level)})")
+        if logger.handlers:
+            for handler in logger.handlers:
+                print(f"  Handler: {handler}")
+        else:
+            print("  No handlers")
+
+        print(f"  Propagate: {logger.propagate}")
+        print()

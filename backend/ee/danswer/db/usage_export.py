@@ -42,7 +42,7 @@ def get_empty_chat_messages_entries__paginated(
 
             message_skeletons.append(
                 ChatMessageSkeleton(
-                    message_id=chat_session.id,
+                    message_id=message.id,
                     chat_session_id=chat_session.id,
                     user_id=str(chat_session.user_id) if chat_session.user_id else None,
                     flow_type=flow_type,
@@ -66,7 +66,7 @@ def get_all_empty_chat_message_entries(
             return
 
         yield message_skeletons
-        initial_id = message_skeletons[-1].message_id
+        initial_id = message_skeletons[-1].chat_session_id
 
 
 def get_all_usage_reports(db_session: Session) -> list[UsageReportMetadata]:

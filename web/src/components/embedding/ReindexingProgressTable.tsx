@@ -6,10 +6,9 @@ import {
   TableBody,
   TableCell,
   TableHead,
-  TableHeaderCell,
+  TableHeader,
   TableRow,
-  Text,
-} from "@tremor/react";
+} from "@/components/ui/table";
 import Link from "next/link";
 import { useState } from "react";
 import { FiMaximize2 } from "react-icons/fi";
@@ -25,20 +24,13 @@ export function ReindexingProgressTable({
   return (
     <div>
       <Table>
-        <TableHead>
+        <TableHeader>
           <TableRow>
-            <TableHeaderCell className="w-1/7 sm:w-1/5">
-              Connector Name
-            </TableHeaderCell>
-            <TableHeaderCell className="w-1/7 sm:w-1/5">Status</TableHeaderCell>
-            <TableHeaderCell className="w-1/7 sm:w-1/5">
-              Docs Re-Indexed
-            </TableHeaderCell>
-            <TableHeaderCell className="w-4/7 sm:w-2/5">
-              Error Message
-            </TableHeaderCell>
+            <TableHead className="w-1/7 sm:w-1/5">Connector Name</TableHead>
+            <TableHead className="w-3/7 sm:w-1/5">Status</TableHead>
+            <TableHead className="w-3/7 sm:w-1/5">Docs Re-Indexed</TableHead>
           </TableRow>
-        </TableHead>
+        </TableHeader>
         <TableBody>
           {reindexingProgress
             .slice(numToDisplay * (page - 1), numToDisplay * page)
@@ -64,13 +56,6 @@ export function ReindexingProgressTable({
                   <TableCell>
                     {reindexingProgress?.latest_index_attempt
                       ?.total_docs_indexed || "-"}
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <Text className="flex flex-wrap whitespace-normal">
-                        {reindexingProgress.error_msg || "-"}
-                      </Text>
-                    </div>
                   </TableCell>
                 </TableRow>
               );

@@ -53,21 +53,23 @@ export interface SlackCredentialJson {
 }
 
 export interface GmailCredentialJson {
-  gmail_tokens: string;
+  google_tokens: string;
+  google_primary_admin: string;
 }
 
 export interface GoogleDriveCredentialJson {
-  google_drive_tokens: string;
+  google_tokens: string;
+  google_primary_admin: string;
 }
 
 export interface GmailServiceAccountCredentialJson {
-  gmail_service_account_key: string;
-  gmail_delegated_user: string;
+  google_service_account_key: string;
+  google_primary_admin: string;
 }
 
 export interface GoogleDriveServiceAccountCredentialJson {
-  google_drive_service_account_key: string;
-  google_drive_delegated_user: string;
+  google_service_account_key: string;
+  google_primary_admin: string;
 }
 
 export interface SlabCredentialJson {
@@ -104,12 +106,6 @@ export interface LinearCredentialJson {
 
 export interface HubSpotCredentialJson {
   hubspot_access_token: string;
-}
-
-export interface RequestTrackerCredentialJson {
-  requesttracker_username: string;
-  requesttracker_password: string;
-  requesttracker_base_url: string;
 }
 
 export interface Document360CredentialJson {
@@ -166,6 +162,10 @@ export interface SharepointCredentialJson {
   sp_directory_id: string;
 }
 
+export interface AsanaCredentialJson {
+  asana_api_token_secret: string;
+}
+
 export interface TeamsCredentialJson {
   teams_client_id: string;
   teams_client_secret: string;
@@ -180,6 +180,16 @@ export interface DiscourseCredentialJson {
 export interface AxeroCredentialJson {
   base_url: string;
   axero_api_token: string;
+}
+
+export interface FreshdeskCredentialJson {
+  freshdesk_domain: string;
+  freshdesk_password: string;
+  freshdesk_api_key: string;
+}
+
+export interface FirefliesCredentialJson {
+  fireflies_api_key: string;
 }
 
 export interface MediaWikiCredentialJson {}
@@ -220,11 +230,6 @@ export const credentialTemplates: Record<ValidSources, any> = {
     portal_id: "",
     document360_api_token: "",
   } as Document360CredentialJson,
-  requesttracker: {
-    requesttracker_username: "",
-    requesttracker_password: "",
-    requesttracker_base_url: "",
-  } as RequestTrackerCredentialJson,
   loopio: {
     loopio_subdomain: "",
     loopio_client_id: "",
@@ -241,6 +246,9 @@ export const credentialTemplates: Record<ValidSources, any> = {
     sp_client_secret: "",
     sp_directory_id: "",
   } as SharepointCredentialJson,
+  asana: {
+    asana_api_token_secret: "",
+  } as AsanaCredentialJson,
   teams: {
     teams_client_id: "",
     teams_client_secret: "",
@@ -282,6 +290,15 @@ export const credentialTemplates: Record<ValidSources, any> = {
     access_key_id: "",
     secret_access_key: "",
   } as OCICredentialJson,
+  freshdesk: {
+    freshdesk_domain: "",
+    freshdesk_password: "",
+    freshdesk_api_key: "",
+  } as FreshdeskCredentialJson,
+  fireflies: {
+    fireflies_api_key: "",
+  } as FirefliesCredentialJson,
+  xenforo: null,
   google_sites: null,
   file: null,
   wikipedia: null,
@@ -291,8 +308,8 @@ export const credentialTemplates: Record<ValidSources, any> = {
   ingestion_api: null,
 
   // NOTE: These are Special Cases
-  google_drive: { google_drive_tokens: "" } as GoogleDriveCredentialJson,
-  gmail: { gmail_tokens: "" } as GmailCredentialJson,
+  google_drive: { google_tokens: "" } as GoogleDriveCredentialJson,
+  gmail: { google_tokens: "" } as GmailCredentialJson,
 };
 
 export const credentialDisplayNames: Record<string, string> = {
@@ -322,19 +339,10 @@ export const credentialDisplayNames: Record<string, string> = {
   // Slack
   slack_bot_token: "Slack Bot Token",
 
-  // Gmail
-  gmail_tokens: "Gmail Tokens",
-
-  // Google Drive
-  google_drive_tokens: "Google Drive Tokens",
-
-  // Gmail Service Account
-  gmail_service_account_key: "Gmail Service Account Key",
-  gmail_delegated_user: "Gmail Delegated User",
-
-  // Google Drive Service Account
-  google_drive_service_account_key: "Google Drive Service Account Key",
-  google_drive_delegated_user: "Google Drive Delegated User",
+  // Gmail and Google Drive
+  google_tokens: "Google Oauth Tokens",
+  google_service_account_key: "Google Service Account Key",
+  google_primary_admin: "Primary Admin Email",
 
   // Slab
   slab_bot_token: "Slab Bot Token",
@@ -363,12 +371,6 @@ export const credentialDisplayNames: Record<string, string> = {
 
   // HubSpot
   hubspot_access_token: "HubSpot Access Token",
-
-  // Request Tracker
-  requesttracker_username: "Request Tracker Username",
-  requesttracker_password: "Request Tracker Password",
-  requesttracker_base_url: "Request Tracker Base URL",
-
   // Document360
   portal_id: "Document360 Portal ID",
   document360_api_token: "Document360 API Token",
@@ -412,6 +414,9 @@ export const credentialDisplayNames: Record<string, string> = {
   sp_client_secret: "SharePoint Client Secret",
   sp_directory_id: "SharePoint Directory ID",
 
+  // Asana
+  asana_api_token_secret: "Asana API Token",
+
   // Teams
   teams_client_id: "Microsoft Teams Client ID",
   teams_client_secret: "Microsoft Teams Client Secret",
@@ -424,7 +429,16 @@ export const credentialDisplayNames: Record<string, string> = {
   // Axero
   base_url: "Axero Base URL",
   axero_api_token: "Axero API Token",
+
+  // Freshdesk
+  freshdesk_domain: "Freshdesk Domain",
+  freshdesk_password: "Freshdesk Password",
+  freshdesk_api_key: "Freshdesk API Key",
+
+  // Fireflies
+  fireflies_api_key: "Fireflies API Key",
 };
+
 export function getDisplayNameForCredentialKey(key: string): string {
   return credentialDisplayNames[key] || key;
 }

@@ -1,12 +1,8 @@
 from abc import ABC
 from abc import abstractmethod
 
-from sqlalchemy.orm import Session
-
-from danswer.db.models import IndexModelStatus
 from danswer.db.models import SearchSettings
-from danswer.db.search_settings import get_current_search_settings
-from danswer.db.search_settings import get_secondary_search_settings
+from danswer.indexing.indexing_heartbeat import Heartbeat
 from danswer.indexing.models import ChunkEmbedding
 from danswer.indexing.models import DocAwareChunk
 from danswer.indexing.models import IndexChunk
@@ -24,6 +20,9 @@ logger = setup_logger()
 
 
 class IndexingEmbedder(ABC):
+    """Converts chunks into chunks with embeddings. Note that one chunk may have
+    multiple embeddings associated with it."""
+
     def __init__(
         self,
         model_name: str,
@@ -33,6 +32,9 @@ class IndexingEmbedder(ABC):
         provider_type: EmbeddingProvider | None,
         api_key: str | None,
         api_url: str | None,
+        api_version: str | None,
+        deployment_name: str | None,
+        heartbeat: Heartbeat | None,
     ):
         self.model_name = model_name
         self.normalize = normalize
@@ -41,6 +43,8 @@ class IndexingEmbedder(ABC):
         self.provider_type = provider_type
         self.api_key = api_key
         self.api_url = api_url
+        self.api_version = api_version
+        self.deployment_name = deployment_name
 
         self.embedding_model = EmbeddingModel(
             model_name=model_name,
@@ -50,10 +54,13 @@ class IndexingEmbedder(ABC):
             api_key=api_key,
             provider_type=provider_type,
             api_url=api_url,
+            api_version=api_version,
+            deployment_name=deployment_name,
             # The below are globally set, this flow always uses the indexing one
             server_host=INDEXING_MODEL_SERVER_HOST,
             server_port=INDEXING_MODEL_SERVER_PORT,
             retrim_content=True,
+            heartbeat=heartbeat,
         )
 
     @abstractmethod
@@ -74,6 +81,9 @@ class DefaultIndexingEmbedder(IndexingEmbedder):
         provider_type: EmbeddingProvider | None = None,
         api_key: str | None = None,
         api_url: str | None = None,
+        api_version: str | None = None,
+        deployment_name: str | None = None,
+        heartbeat: Heartbeat | None = None,
     ):
         super().__init__(
             model_name,
@@ -83,6 +93,9 @@ class DefaultIndexingEmbedder(IndexingEmbedder):
             provider_type,
             api_key,
             api_url,
+            api_version,
+            deployment_name,
+            heartbeat,
         )
 
     @log_function_time()
@@ -90,6 +103,9 @@ class DefaultIndexingEmbedder(IndexingEmbedder):
         self,
         chunks: list[DocAwareChunk],
     ) -> list[IndexChunk]:
+        """Adds embeddings to the chunks, the title and metadata suffixes are added to the chunk as well
+        if they exist. If there is no space for it, it would have been thrown out at the chunking step.
+        """
         # All chunks at this point must have some non-empty content
         flat_chunk_texts: list[str] = []
         large_chunks_present = False
@@ -108,6 +124,11 @@ class DefaultIndexingEmbedder(IndexingEmbedder):
             flat_chunk_texts.append(chunk_text)
 
             if chunk.mini_chunk_texts:
+                if chunk.large_chunk_reference_ids:
+                    # A large chunk does not contain mini chunks, if it matches the large chunk
+                    # with a high score, then mini chunks would not be used anyway
+                    # otherwise it should match the normal chunk
+                    raise RuntimeError("Large chunk contains mini chunks")
                 flat_chunk_texts.extend(chunk.mini_chunk_texts)
 
         embeddings = self.embedding_model.encode(
@@ -166,7 +187,7 @@ class DefaultIndexingEmbedder(IndexingEmbedder):
                     title_embed_dict[title] = title_embedding
 
             new_embedded_chunk = IndexChunk(
-                **chunk.dict(),
+                **chunk.model_dump(),
                 embeddings=ChunkEmbedding(
                     full_embedding=chunk_embeddings[0],
                     mini_chunk_embeddings=chunk_embeddings[1:],
@@ -180,7 +201,7 @@ class DefaultIndexingEmbedder(IndexingEmbedder):
 
     @classmethod
     def from_db_search_settings(
-        cls, search_settings: SearchSettings
+        cls, search_settings: SearchSettings, heartbeat: Heartbeat | None = None
     ) -> "DefaultIndexingEmbedder":
         return cls(
             model_name=search_settings.model_name,
@@ -190,28 +211,7 @@ class DefaultIndexingEmbedder(IndexingEmbedder):
             provider_type=search_settings.provider_type,
             api_key=search_settings.api_key,
             api_url=search_settings.api_url,
+            api_version=search_settings.api_version,
+            deployment_name=search_settings.deployment_name,
+            heartbeat=heartbeat,
         )
-
-
-def get_embedding_model_from_search_settings(
-    db_session: Session, index_model_status: IndexModelStatus = IndexModelStatus.PRESENT
-) -> IndexingEmbedder:
-    search_settings: SearchSettings | None
-    if index_model_status == IndexModelStatus.PRESENT:
-        search_settings = get_current_search_settings(db_session)
-    elif index_model_status == IndexModelStatus.FUTURE:
-        search_settings = get_secondary_search_settings(db_session)
-        if not search_settings:
-            raise RuntimeError("No secondary index configured")
-    else:
-        raise RuntimeError("Not supporting embedding model rollbacks")
-
-    return DefaultIndexingEmbedder(
-        model_name=search_settings.model_name,
-        normalize=search_settings.normalize,
-        query_prefix=search_settings.query_prefix,
-        passage_prefix=search_settings.passage_prefix,
-        provider_type=search_settings.provider_type,
-        api_key=search_settings.api_key,
-        api_url=search_settings.api_url,
-    )

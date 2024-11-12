@@ -10,7 +10,7 @@ from danswer.search.enums import QueryFlow
 from danswer.search.enums import SearchType
 from danswer.search.models import RetrievalDocs
 from danswer.search.models import SearchResponse
-from danswer.tools.custom.base_tool_types import ToolResultType
+from danswer.tools.tool_implementations.custom.base_tool_types import ToolResultType
 
 
 class LlmDoc(BaseModel):
@@ -60,7 +60,11 @@ class StreamStopInfo(BaseModel):
 
 
 class LLMRelevanceFilterResponse(BaseModel):
-    relevant_chunk_indices: list[int]
+    llm_selected_doc_indices: list[int]
+
+
+class FinalUsedContextDocsResponse(BaseModel):
+    final_context_docs: list[LlmDoc]
 
 
 class RelevanceAnalysis(BaseModel):
@@ -91,6 +95,16 @@ class DanswerAnswerPiece(BaseModel):
 class CitationInfo(BaseModel):
     citation_num: int
     document_id: str
+
+
+class AllCitations(BaseModel):
+    citations: list[CitationInfo]
+
+
+# This is a mapping of the citation number to the document index within
+# the result search doc set
+class MessageSpecificCitations(BaseModel):
+    citation_map: dict[int, int]
 
 
 class MessageResponseIDInfo(BaseModel):
@@ -138,11 +152,11 @@ class QAResponse(SearchResponse, DanswerAnswer):
     predicted_flow: QueryFlow
     predicted_search: SearchType
     eval_res_valid: bool | None = None
-    llm_chunks_indices: list[int] | None = None
+    llm_selected_doc_indices: list[int] | None = None
     error_msg: str | None = None
 
 
-class ImageGenerationDisplay(BaseModel):
+class FileChatDisplay(BaseModel):
     file_ids: list[str]
 
 
@@ -156,7 +170,7 @@ AnswerQuestionPossibleReturn = (
     | DanswerQuotes
     | CitationInfo
     | DanswerContexts
-    | ImageGenerationDisplay
+    | FileChatDisplay
     | CustomToolResponse
     | StreamingError
     | StreamStopInfo

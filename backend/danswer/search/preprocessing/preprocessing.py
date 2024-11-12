@@ -9,6 +9,7 @@ from danswer.configs.chat_configs import HYBRID_ALPHA
 from danswer.configs.chat_configs import HYBRID_ALPHA_KEYWORD
 from danswer.configs.chat_configs import NUM_POSTPROCESSED_RESULTS
 from danswer.configs.chat_configs import NUM_RETURNED_HITS
+from danswer.db.engine import CURRENT_TENANT_ID_CONTEXTVAR
 from danswer.db.models import User
 from danswer.db.search_settings import get_current_search_settings
 from danswer.llm.interfaces import LLM
@@ -29,6 +30,7 @@ from danswer.utils.logger import setup_logger
 from danswer.utils.threadpool_concurrency import FunctionCall
 from danswer.utils.threadpool_concurrency import run_functions_in_parallel
 from danswer.utils.timing import log_function_time
+from shared_configs.configs import MULTI_TENANT
 
 
 logger = setup_logger()
@@ -67,6 +69,9 @@ def retrieval_preprocessing(
         ]
 
     time_filter = preset_filters.time_cutoff
+    if time_filter is None and persona:
+        time_filter = persona.search_start_date
+
     source_filter = preset_filters.source_type
 
     auto_detect_time_filter = True
@@ -154,9 +159,10 @@ def retrieval_preprocessing(
     final_filters = IndexFilters(
         source_type=preset_filters.source_type or predicted_source_filters,
         document_set=preset_filters.document_set,
-        time_cutoff=preset_filters.time_cutoff or predicted_time_cutoff,
+        time_cutoff=time_filter or predicted_time_cutoff,
         tags=preset_filters.tags,  # Tags are never auto-extracted
         access_control_list=user_acl_filters,
+        tenant_id=CURRENT_TENANT_ID_CONTEXTVAR.get() if MULTI_TENANT else None,
     )
 
     llm_evaluation_type = LLMEvaluationType.BASIC

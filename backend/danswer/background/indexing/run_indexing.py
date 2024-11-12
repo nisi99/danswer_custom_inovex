@@ -1,5 +1,7 @@
 import time
 import traceback
+from abc import ABC
+from abc import abstractmethod
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
@@ -14,21 +16,22 @@ from danswer.configs.app_configs import POLL_CONNECTOR_OFFSET
 from danswer.connectors.connector_runner import ConnectorRunner
 from danswer.connectors.factory import instantiate_connector
 from danswer.connectors.models import IndexAttemptMetadata
+from danswer.db.connector_credential_pair import get_connector_credential_pair_from_id
 from danswer.db.connector_credential_pair import get_last_successful_attempt_time
 from danswer.db.connector_credential_pair import update_connector_credential_pair
-from danswer.db.engine import get_sqlalchemy_engine
+from danswer.db.engine import get_session_with_tenant
 from danswer.db.enums import ConnectorCredentialPairStatus
-from danswer.db.index_attempt import get_index_attempt
 from danswer.db.index_attempt import mark_attempt_failed
-from danswer.db.index_attempt import mark_attempt_in_progress
 from danswer.db.index_attempt import mark_attempt_partially_succeeded
 from danswer.db.index_attempt import mark_attempt_succeeded
+from danswer.db.index_attempt import transition_attempt_to_in_progress
 from danswer.db.index_attempt import update_docs_indexed
 from danswer.db.models import IndexAttempt
 from danswer.db.models import IndexingStatus
 from danswer.db.models import IndexModelStatus
 from danswer.document_index.factory import get_default_document_index
 from danswer.indexing.embedder import DefaultIndexingEmbedder
+from danswer.indexing.indexing_heartbeat import IndexingHeartbeat
 from danswer.indexing.indexing_pipeline import build_indexing_pipeline
 from danswer.utils.logger import IndexAttemptSingleton
 from danswer.utils.logger import setup_logger
@@ -39,11 +42,25 @@ logger = setup_logger()
 INDEXING_TRACER_NUM_PRINT_ENTRIES = 5
 
 
+class RunIndexingCallbackInterface(ABC):
+    """Defines a callback interface to be passed to
+    to run_indexing_entrypoint."""
+
+    @abstractmethod
+    def should_stop(self) -> bool:
+        """Signal to stop the looping function in flight."""
+
+    @abstractmethod
+    def progress(self, amount: int) -> None:
+        """Send progress updates to the caller."""
+
+
 def _get_connector_runner(
     db_session: Session,
     attempt: IndexAttempt,
     start_time: datetime,
     end_time: datetime,
+    tenant_id: str | None,
 ) -> ConnectorRunner:
     """
     NOTE: `start_time` and `end_time` are only used for poll connectors
@@ -56,22 +73,28 @@ def _get_connector_runner(
 
     try:
         runnable_connector = instantiate_connector(
-            attempt.connector_credential_pair.connector.source,
-            task,
-            attempt.connector_credential_pair.connector.connector_specific_config,
-            attempt.connector_credential_pair.credential,
-            db_session,
+            db_session=db_session,
+            source=attempt.connector_credential_pair.connector.source,
+            input_type=task,
+            connector_specific_config=attempt.connector_credential_pair.connector.connector_specific_config,
+            credential=attempt.connector_credential_pair.credential,
+            tenant_id=tenant_id,
         )
     except Exception as e:
         logger.exception(f"Unable to instantiate connector due to {e}")
         # since we failed to even instantiate the connector, we pause the CCPair since
         # it will never succeed
-        update_connector_credential_pair(
-            db_session=db_session,
-            connector_id=attempt.connector_credential_pair.connector.id,
-            credential_id=attempt.connector_credential_pair.credential.id,
-            status=ConnectorCredentialPairStatus.PAUSED,
+
+        cc_pair = get_connector_credential_pair_from_id(
+            attempt.connector_credential_pair.id, db_session
         )
+        if cc_pair and cc_pair.status == ConnectorCredentialPairStatus.ACTIVE:
+            update_connector_credential_pair(
+                db_session=db_session,
+                connector_id=attempt.connector_credential_pair.connector.id,
+                credential_id=attempt.connector_credential_pair.credential.id,
+                status=ConnectorCredentialPairStatus.PAUSED,
+            )
         raise e
 
     return ConnectorRunner(
@@ -82,15 +105,26 @@ def _get_connector_runner(
 def _run_indexing(
     db_session: Session,
     index_attempt: IndexAttempt,
+    tenant_id: str | None,
+    callback: RunIndexingCallbackInterface | None = None,
 ) -> None:
     """
     1. Get documents which are either new or updated from specified application
     2. Embed and index these documents into the chosen datastore (vespa)
     3. Updates Postgres to record the indexed documents + the outcome of this run
+
+    TODO: do not change index attempt statuses here ... instead, set signals in redis
+    and allow the monitor function to clean them up
     """
     start_time = time.time()
 
+    if index_attempt.search_settings is None:
+        raise ValueError(
+            "Search settings must be set for indexing. This should not be possible."
+        )
+
     search_settings = index_attempt.search_settings
+
     index_name = search_settings.index_name
 
     # Only update cc-pair status for primary index jobs
@@ -103,16 +137,26 @@ def _run_indexing(
     )
 
     embedding_model = DefaultIndexingEmbedder.from_db_search_settings(
-        search_settings=search_settings
+        search_settings=search_settings,
+        heartbeat=IndexingHeartbeat(
+            index_attempt_id=index_attempt.id,
+            db_session=db_session,
+            # let the world know we're still making progress after
+            # every 10 batches
+            freq=10,
+        ),
     )
 
     indexing_pipeline = build_indexing_pipeline(
         attempt_id=index_attempt.id,
         embedder=embedding_model,
         document_index=document_index,
-        ignore_time_skip=index_attempt.from_beginning
-        or (search_settings.status == IndexModelStatus.FUTURE),
+        ignore_time_skip=(
+            index_attempt.from_beginning
+            or (search_settings.status == IndexModelStatus.FUTURE)
+        ),
         db_session=db_session,
+        tenant_id=tenant_id,
     )
 
     db_cc_pair = index_attempt.connector_credential_pair
@@ -169,6 +213,7 @@ def _run_indexing(
                 attempt=index_attempt,
                 start_time=window_start,
                 end_time=window_end,
+                tenant_id=tenant_id,
             )
 
             all_connector_doc_ids: set[str] = set()
@@ -181,7 +226,12 @@ def _run_indexing(
                 # index being built. We want to populate it even for paused connectors
                 # Often paused connectors are sources that aren't updated frequently but the
                 # contents still need to be initially pulled.
-                db_session.refresh(db_connector)
+                if callback:
+                    if callback.should_stop():
+                        raise RuntimeError("Connector stop signal detected")
+
+                # TODO: should we move this into the above callback instead?
+                db_session.refresh(db_cc_pair)
                 if (
                     (
                         db_cc_pair.status == ConnectorCredentialPairStatus.PAUSED
@@ -196,7 +246,9 @@ def _run_indexing(
                 db_session.refresh(index_attempt)
                 if index_attempt.status != IndexingStatus.IN_PROGRESS:
                     # Likely due to user manually disabling it or model swap
-                    raise RuntimeError("Index Attempt was canceled")
+                    raise RuntimeError(
+                        f"Index Attempt was canceled, status is {index_attempt.status}"
+                    )
 
                 batch_description = []
                 for doc in doc_batch:
@@ -216,6 +268,8 @@ def _run_indexing(
                 logger.debug(f"Indexing batch of documents: {batch_description}")
 
                 index_attempt_md.batch_num = batch_num + 1  # use 1-index for this
+
+                # real work happens here!
                 new_docs, total_batch_chunks = indexing_pipeline(
                     document_batch=doc_batch,
                     index_attempt_metadata=index_attempt_md,
@@ -233,6 +287,9 @@ def _run_indexing(
                 # a long running transaction, the `time_updated` field will
                 # be inaccurate
                 db_session.commit()
+
+                if callback:
+                    callback.progress(len(doc_batch))
 
                 # This new value is updated every batch, so UI can refresh per batch update
                 update_docs_indexed(
@@ -280,7 +337,7 @@ def _run_indexing(
                 or index_attempt.status != IndexingStatus.IN_PROGRESS
             ):
                 mark_attempt_failed(
-                    index_attempt,
+                    index_attempt.id,
                     db_session,
                     failure_reason=str(e),
                     full_exception_trace=traceback.format_exc(),
@@ -315,7 +372,7 @@ def _run_indexing(
         and index_attempt_md.num_exceptions >= batch_num
     ):
         mark_attempt_failed(
-            index_attempt,
+            index_attempt.id,
             db_session,
             failure_reason="All batches exceptioned.",
         )
@@ -357,64 +414,45 @@ def _run_indexing(
         )
 
 
-def _prepare_index_attempt(db_session: Session, index_attempt_id: int) -> IndexAttempt:
-    # make sure that the index attempt can't change in between checking the
-    # status and marking it as in_progress. This setting will be discarded
-    # after the next commit:
-    # https://docs.sqlalchemy.org/en/20/orm/session_transaction.html#setting-isolation-for-individual-transactions
-    db_session.connection(execution_options={"isolation_level": "SERIALIZABLE"})  # type: ignore
-
-    attempt = get_index_attempt(
-        db_session=db_session,
-        index_attempt_id=index_attempt_id,
-    )
-
-    if attempt is None:
-        raise RuntimeError(f"Unable to find IndexAttempt for ID '{index_attempt_id}'")
-
-    if attempt.status != IndexingStatus.NOT_STARTED:
-        raise RuntimeError(
-            f"Indexing attempt with ID '{index_attempt_id}' is not in NOT_STARTED status. "
-            f"Current status is '{attempt.status}'."
-        )
-
-    # only commit once, to make sure this all happens in a single transaction
-    mark_attempt_in_progress(attempt, db_session)
-
-    return attempt
-
-
-def run_indexing_entrypoint(index_attempt_id: int, is_ee: bool = False) -> None:
-    """Entrypoint for indexing run when using dask distributed.
-    Wraps the actual logic in a `try` block so that we can catch any exceptions
-    and mark the attempt as failed."""
+def run_indexing_entrypoint(
+    index_attempt_id: int,
+    tenant_id: str | None,
+    connector_credential_pair_id: int,
+    is_ee: bool = False,
+    callback: RunIndexingCallbackInterface | None = None,
+) -> None:
     try:
         if is_ee:
             global_version.set_ee()
 
         # set the indexing attempt ID so that all log messages from this process
         # will have it added as a prefix
-        IndexAttemptSingleton.set_index_attempt_id(index_attempt_id)
-
-        with Session(get_sqlalchemy_engine()) as db_session:
-            # make sure that it is valid to run this indexing attempt + mark it
-            # as in progress
-            attempt = _prepare_index_attempt(db_session, index_attempt_id)
+        IndexAttemptSingleton.set_cc_and_index_id(
+            index_attempt_id, connector_credential_pair_id
+        )
+        with get_session_with_tenant(tenant_id) as db_session:
+            attempt = transition_attempt_to_in_progress(index_attempt_id, db_session)
 
             logger.info(
-                f"Indexing starting: "
-                f"connector='{attempt.connector_credential_pair.connector.name}' "
+                f"Indexing starting for tenant {tenant_id}: "
+                if tenant_id is not None
+                else ""
+                + f"connector='{attempt.connector_credential_pair.connector.name}' "
                 f"config='{attempt.connector_credential_pair.connector.connector_specific_config}' "
                 f"credentials='{attempt.connector_credential_pair.connector_id}'"
             )
 
-            _run_indexing(db_session, attempt)
+            _run_indexing(db_session, attempt, tenant_id, callback)
 
             logger.info(
-                f"Indexing finished: "
-                f"connector='{attempt.connector_credential_pair.connector.name}' "
+                f"Indexing finished for tenant {tenant_id}: "
+                if tenant_id is not None
+                else ""
+                + f"connector='{attempt.connector_credential_pair.connector.name}' "
                 f"config='{attempt.connector_credential_pair.connector.connector_specific_config}' "
                 f"credentials='{attempt.connector_credential_pair.connector_id}'"
             )
     except Exception as e:
-        logger.exception(f"Indexing job with ID '{index_attempt_id}' failed due to {e}")
+        logger.exception(
+            f"Indexing job with ID '{index_attempt_id}' for tenant {tenant_id} failed due to {e}"
+        )

@@ -3,9 +3,12 @@ import { Credential } from "./connectors/credentials";
 import { Connector } from "./connectors/connectors";
 import { ConnectorCredentialPairStatus } from "@/app/admin/connector/[ccPairId]/types";
 
-export interface UserPreferences {
+interface UserPreferences {
   chosen_assistants: number[] | null;
+  visible_assistants: number[];
+  hidden_assistants: number[];
   default_model: string | null;
+  recent_assistants: number[];
 }
 
 export enum UserStatus {
@@ -21,6 +24,13 @@ export enum UserRole {
   GLOBAL_CURATOR = "global_curator",
 }
 
+export const USER_ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.BASIC]: "Basic",
+  [UserRole.ADMIN]: "Admin",
+  [UserRole.GLOBAL_CURATOR]: "Global Curator",
+  [UserRole.CURATOR]: "Curator",
+};
+
 export interface User {
   id: string;
   email: string;
@@ -33,6 +43,8 @@ export interface User {
   current_token_created_at?: Date;
   current_token_expiry_length?: number;
   oidc_expiry?: Date;
+  is_cloud_superuser?: boolean;
+  organization_name: string | null;
 }
 
 export interface MinimalUserSnapshot {
@@ -49,6 +61,8 @@ export type ValidStatuses =
   | "not_started";
 export type TaskStatus = "PENDING" | "STARTED" | "SUCCESS" | "FAILURE";
 export type Feedback = "like" | "dislike";
+export type AccessType = "public" | "private" | "sync";
+export type SessionType = "Chat" | "Search" | "Slack";
 
 export interface DocumentBoostStatus {
   document_id: string;
@@ -56,6 +70,15 @@ export interface DocumentBoostStatus {
   link: string;
   boost: number;
   hidden: boolean;
+}
+
+export interface FailedConnectorIndexingStatus {
+  cc_pair_id: number;
+  name: string | null;
+  error_msg: string | null;
+  is_deletable: boolean;
+  connector_id: number;
+  credential_id: number;
 }
 
 export interface IndexAttemptSnapshot {
@@ -80,7 +103,7 @@ export interface ConnectorIndexingStatus<
   cc_pair_status: ConnectorCredentialPairStatus;
   connector: Connector<ConnectorConfigType>;
   credential: Credential<ConnectorCredentialType>;
-  public_doc: boolean;
+  access_type: AccessType;
   owner: string;
   groups: number[];
   last_finished_status: ValidStatuses | null;
@@ -91,6 +114,7 @@ export interface ConnectorIndexingStatus<
   latest_index_attempt: IndexAttemptSnapshot | null;
   deletion_attempt: DeletionAttemptSnapshot | null;
   is_deletable: boolean;
+  in_progress: boolean;
 }
 
 export interface CCPairBasicInfo {
@@ -152,6 +176,8 @@ export interface StandardAnswer {
   id: number;
   keyword: string;
   answer: string;
+  match_regex: boolean;
+  match_any_keywords: boolean;
   categories: StandardAnswerCategory[];
 }
 
@@ -218,7 +244,6 @@ const validSources = [
   "linear",
   "hubspot",
   "document360",
-  "requesttracker",
   "file",
   "google_sites",
   "loopio",
@@ -232,12 +257,16 @@ const validSources = [
   "clickup",
   "wikipedia",
   "mediawiki",
+  "asana",
   "s3",
   "r2",
   "google_cloud_storage",
+  "xenforo",
   "oci_storage",
   "not_applicable",
   "ingestion_api",
+  "freshdesk",
+  "fireflies",
 ] as const;
 
 export type ValidSources = (typeof validSources)[number];
@@ -246,3 +275,12 @@ export type ConfigurableSources = Exclude<
   ValidSources,
   "not_applicable" | "ingestion_api"
 >;
+
+// The sources that have auto-sync support on the backend
+export const validAutoSyncSources = [
+  "confluence",
+  "google_drive",
+  "gmail",
+  "slack",
+] as const;
+export type ValidAutoSyncSources = (typeof validAutoSyncSources)[number];
