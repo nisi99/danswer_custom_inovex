@@ -1,30 +1,21 @@
 import asyncio
 import base64
-import io
-import os
-from collections.abc import Callable
-from collections.abc import Collection
+import re
 from datetime import datetime
 from datetime import timezone
 from typing import Any
-from typing import cast
 from typing import Dict
 from typing import List
 
 from urllib.parse import quote
 
 import bs4  # type: ignore
-import requests
+import requests # type: ignore
 from atlassian import Confluence  # type:ignore
-from attr import dataclass
-from bs4 import SoupStrainer
-from requests import HTTPError  # type: ignore
+from attr import dataclass # type: ignore
+from bs4 import SoupStrainer # type: ignore
 
-from danswer.configs.app_configs import (
-    CONFLUENCE_CONNECTOR_ATTACHMENT_CHAR_COUNT_THRESHOLD,
-)
-from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_ATTACHMENT_SIZE_THRESHOLD
-from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_INDEX_ARCHIVED_PAGES
+
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
 from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
@@ -49,8 +40,7 @@ from danswer.connectors.models import ConnectorMissingCredentialError
 from danswer.connectors.models import Document
 from danswer.connectors.models import Section
 from danswer.connectors.models import SlimDocument
-from danswer.file_processing.extract_file_text import extract_file_text
-from danswer.file_processing.html_utils import format_document_soup
+
 from danswer.file_processing.image_summarization import summarize_image
 
 from danswer.utils.logger import setup_logger
@@ -61,14 +51,15 @@ logger = setup_logger()
 # 1. Include attachments, etc
 # 2. Segment into Sections for more accurate linking, can split by headers but make sure no text/ordering is lost
 
-_COMMENT_EXPANSION_FIELDS = ["body.storage.value,body.view.value"]
+_COMMENT_EXPANSION_FIELDS = ["body.storage.value"]
 _PAGE_EXPANSION_FIELDS = [
-    "body.storage.value,body.view.value",
+    "body.storage.value",
     "version",
     "space",
     "metadata.labels",
 ]
 _ATTACHMENT_EXPANSION_FIELDS = [
+    "body.storage.value",
     "version",
     "space",
     "metadata.labels",
@@ -201,7 +192,7 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             )
 
         if object_text is None:
-            return None
+            return None, None
 
         # Get space name
         doc_metadata: dict[str, str | list[str]] = {
@@ -218,23 +209,37 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         last_modified = datetime_from_string(confluence_object["version"]["when"])
         author_email = confluence_object["version"].get("by", {}).get("email")
 
+        doc = Document(
+            id=object_url,
+            sections=[Section(link=object_url, text=object_text)],
+            source=DocumentSource.CONFLUENCE,
+            semantic_identifier=confluence_object["title"],
+            doc_updated_at=last_modified,
+            primary_owners=(
+                [BasicExpertInfo(email=author_email)] if author_email else None
+            ),
+            metadata=doc_metadata,
+        )
+
+        image_docs = []
         if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
             # get summaries of images from page
             page_images = asyncio.run(
-                self._summarize_page_images(object_text, self.confluence_client, USER_PROMPT)
+                self._summarize_page_images(confluence_object, self.confluence_client, USER_PROMPT)
             )
             # add tag to flag summaries (needed to switch between base and multimodal danswer)
             doc_metadata["is_image_summary"] = "True"
 
             # if page contains any images:
-            # add each image and its caption to doc/chunks
+            # add caption of each image to doc/chunks
             if page_images:
                 for image in page_images:
                     # append image to metadata if usage of raw image true
                     if MULTIMODAL_ANSWERING_WITH_RAW_IMAGE:
                         doc_metadata["image"] = image.base64_encoded
 
-                        return Document(
+                    image_docs.append(
+                        Document(
                             id=image.url,
                             sections=[
                                 Section(link=object_url, text=image.summary or "")
@@ -247,18 +252,10 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                             ),
                             metadata=doc_metadata,
                         )
+                    )
 
-        return Document(
-            id=object_url,
-            sections=[Section(link=object_url, text=object_text)],
-            source=DocumentSource.CONFLUENCE,
-            semantic_identifier=confluence_object["title"],
-            doc_updated_at=last_modified,
-            primary_owners=(
-                [BasicExpertInfo(email=author_email)] if author_email else None
-            ),
-            metadata=doc_metadata,
-        )
+        return doc, image_docs
+
 
     def _fetch_document_batches(self) -> GenerateDocumentsOutput:
         if self.confluence_client is None:
@@ -276,9 +273,13 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         ):
             for page in page_batch:
                 confluence_page_ids.append(page["id"])
-                doc = self._convert_object_to_document(page)
+                doc, image_docs = self._convert_object_to_document(page)
+
                 if doc is not None:
                     doc_batch.append(doc)
+                if image_docs:
+                    doc_batch.extend(image_docs)
+
                 if len(doc_batch) >= self.batch_size:
                     yield doc_batch
                     doc_batch = []
@@ -293,9 +294,13 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                 expand=",".join(_ATTACHMENT_EXPANSION_FIELDS),
             ):
                 for attachment in attachments:
-                    doc = self._convert_object_to_document(attachment)
+                    logger.warning(f'attachment: {attachment}')
+                    doc, image_docs = self._convert_object_to_document(attachment)
                     if doc is not None:
                         doc_batch.append(doc)
+                    if image_docs:
+                        doc_batch.extend(image_docs)
+
                     if len(doc_batch) >= self.batch_size:
                         yield doc_batch
                         doc_batch = []
@@ -370,6 +375,13 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                 doc_metadata_list = []
 
     @classmethod
+    def _attachment_to_download_link(
+        cls, confluence_client: Confluence, attachment: dict[str, Any]
+    ) -> str:
+        return confluence_client.url + attachment["_links"]["download"]
+
+
+    @classmethod
     async def _summarize_page_images(
         cls, page: Dict[str, Any], confluence_client: Confluence, USER_PROMPT: str
     ) -> List[ImageSummarization]:
@@ -377,16 +389,20 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
 
         page_id = page["id"]
         confluence_xml = page["body"]["storage"]["value"]
-        logger.info(f"page_id = {page_id}")
+        logger.warning(f"confluence_xml: {confluence_xml}")
         attachments = cls._get_embedded_image_attachments(
             confluence_client, confluence_xml, page_id
         )
+
+        image_urls_test = re.findall(r'ac:src="([^"]+)"', confluence_xml)
+        logger.warning(f"image_urls_test: {image_urls_test}")
 
         async def summarize_attachment(attachment, USER_PROMPT):
             title = attachment["title"]
             download_link = ConfluenceConnector._attachment_to_download_link(
                 confluence_client, attachment
             )
+            logger.info(f"download_link = {download_link}")
 
             try:
                 # get image from url
@@ -472,5 +488,6 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         attachments_container = get_attachments_from_content(
             page_id, start=0, limit=500, expand=expand
         )
+        logger.warning(f"attachments_container: {attachments_container}")
         attachments = attachments_container["results"]
         return attachments
