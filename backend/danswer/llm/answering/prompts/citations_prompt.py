@@ -161,7 +161,6 @@ def build_citations_user_message(
             user_query=query,
             history_block=history_block,
         )
-
     else:
         # if no context docs provided, assume we're in the tool calling flow
         user_prompt = CITATIONS_PROMPT_FOR_TOOL_CALLING.format(

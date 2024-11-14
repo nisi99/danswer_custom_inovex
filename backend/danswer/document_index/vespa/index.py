@@ -381,7 +381,7 @@ class VespaIndex(DocumentIndex):
                 json=update.update_request,
             )
 
-        # NOTE: using `httpx` here since `requests` doesn't support HTTP2. This is beneficent for
+        # NOTE: using `httpx` here since `requests` doesn't support HTTP2. This is beneficient for
         # indexing / updates / deletes since we have to make a large volume of requests.
 
         with (

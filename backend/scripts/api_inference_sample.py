@@ -9,14 +9,11 @@ import requests
 
 def create_new_chat_session(danswer_url: str, api_key: str | None) -> int:
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-    cookies = {"fastapiusersauth": api_key, "toggled_connectors": "{%22confluence%22:true}"}
-
     session_endpoint = danswer_url + "/api/chat/create-chat-session"
 
     response = requests.post(
         session_endpoint,
         headers=headers,
-        cookies=cookies,
         json={"persona_id": 0},  # Global default Persona/Assistant ID
     )
     response.raise_for_status()
@@ -31,7 +28,6 @@ def process_question(danswer_url: str, question: str, api_key: str | None) -> No
     chat_session_id = create_new_chat_session(danswer_url, api_key)
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-    cookies = {"fastapiusersauth": api_key, "toggled_connectors": "{%22confluence%22:true}"}
 
     data = {
         "message": question,
@@ -51,7 +47,7 @@ def process_question(danswer_url: str, question: str, api_key: str | None) -> No
         },
     }
 
-    with requests.post(message_endpoint, headers=headers, json=data, cookies=cookies) as response:
+    with requests.post(message_endpoint, headers=headers, json=data) as response:
         response.raise_for_status()
 
         for packet in response.iter_lines():

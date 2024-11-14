@@ -127,7 +127,7 @@ class Chunker:
         mini_chunk_size: int = MINI_CHUNK_SIZE,
         heartbeat: Heartbeat | None = None,
     ) -> None:
-        from llama_index.text_splitter import SentenceSplitter  # type: ignore
+        from llama_index.text_splitter import SentenceSplitter
 
         self.include_metadata = include_metadata
         self.chunk_token_limit = chunk_token_limit
@@ -220,7 +220,6 @@ class Chunker:
                 mini_chunk_texts=self._get_mini_chunk_texts(text),
             )
 
-
         for section in document.sections:
             section_text = section.text
             section_link_text = section.link or ""
@@ -232,7 +231,7 @@ class Chunker:
             # at the end by other sections
             if section_token_count > content_token_limit:
                 if chunk_text:
-                    chunks.append(_create_chunk(text=chunk_text, links=link_offsets))
+                    chunks.append(_create_chunk(chunk_text, link_offsets))
                     link_offsets = {}
                     chunk_text = ""
 
@@ -288,7 +287,7 @@ class Chunker:
                 chunk_text += section_text
                 link_offsets[current_offset] = section_link_text
             else:
-                chunks.append(_create_chunk(text=chunk_text, links=link_offsets))
+                chunks.append(_create_chunk(chunk_text, link_offsets))
                 link_offsets = {0: section_link_text}
                 chunk_text = section_text
 
@@ -298,8 +297,8 @@ class Chunker:
         if chunk_text.strip() or not chunks:
             chunks.append(
                 _create_chunk(
-                    text=chunk_text,
-                    links=link_offsets or {0: section_link_text},
+                    chunk_text,
+                    link_offsets or {0: section_link_text},
                 )
             )
 
