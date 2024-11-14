@@ -1,6 +1,3 @@
-import base64
-import os
-
 from langchain.schema.messages import HumanMessage
 from langchain.schema.messages import SystemMessage
 
@@ -9,8 +6,6 @@ from danswer.configs.model_configs import GEN_AI_SINGLE_USER_MESSAGE_EXPECTED_MA
 from danswer.db.models import Persona
 from danswer.db.persona import get_default_prompt__read_only
 from danswer.db.search_settings import get_multilingual_expansion
-from danswer.file_store.models import ChatFileType
-from danswer.file_store.utils import InMemoryChatFile
 from danswer.llm.answering.models import PromptConfig
 from danswer.llm.factory import get_llms_for_persona
 from danswer.llm.factory import get_main_llm_from_tuple
@@ -157,33 +152,6 @@ def build_citations_user_message(
     query, img_urls = message_to_prompt_and_imgs(message)
 
     if context_docs:
-        # if top chunk contains image --> add image to user prompt
-        first_context_doc = context_docs[0]
-        logger.info(f"first_context_doc = {first_context_doc}")
-
-        if os.getenv("MULTIMODAL_ANSWERING_WITH_RAW_IMAGE", False):
-            if "image" in first_context_doc.metadata.keys():
-                base64_image = str(first_context_doc.metadata["image"])
-                image_decoded = base64.b64decode(base64_image)
-
-                # add image as chat file
-                image = InMemoryChatFile(
-                    file_id=first_context_doc.document_id,
-                    content=image_decoded,
-                    file_type=ChatFileType.IMAGE,
-                )
-                files.append(image)
-
-                # remove summary from context
-                context_docs = context_docs[1:]
-
-                logger.info(
-                    "Retrieved chunk contains an image -> added image to user prompt."
-                )
-                logger.notice(
-                    f"used image to answer question: \n{first_context_doc.document_id}"
-                )
-
         context_docs_str = build_complete_context_str(context_docs)
         logger.notice(
             f"retrieved contexts to answer question: \n{build_complete_context_str_eval_format(context_docs)}"

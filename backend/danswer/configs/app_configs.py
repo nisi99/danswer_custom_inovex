@@ -457,10 +457,6 @@ PARSE_WITH_TRAFILATURA = os.environ.get("PARSE_WITH_TRAFILATURA", "").lower() ==
 MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE = (
     os.environ.get("MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE", "").lower() == "true"
 )
-# enable usage of raw images in answer generation
-MULTIMODAL_ANSWERING_WITH_RAW_IMAGE = (
-    os.environ.get("MULTIMODAL_ANSWERING_WITH_RAW_IMAGE", "").lower() == "true"
-)
 
 #####
 # Enterprise Edition Configs
