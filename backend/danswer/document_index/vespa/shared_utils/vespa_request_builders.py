@@ -59,10 +59,10 @@ def build_vespa_filters(filters: IndexFilters, include_hidden: bool = False) -> 
         filter_str += f'({TENANT_ID} contains "{filters.tenant_id}") and '
 
     # CAREFUL touching this one, currently there is no second ACL double-check post retrieval
-    # if filters.access_control_list is not None:
-    #     filter_str += _build_or_filters(
-    #         ACCESS_CONTROL_LIST, filters.access_control_list
-    #     )
+    if filters.access_control_list is not None:
+        filter_str += _build_or_filters(
+            ACCESS_CONTROL_LIST, filters.access_control_list
+        )
 
     source_strs = (
         [s.value for s in filters.source_type] if filters.source_type else None
