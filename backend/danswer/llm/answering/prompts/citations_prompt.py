@@ -151,6 +151,29 @@ def build_citations_user_message(
     query, img_urls = message_to_prompt_and_imgs(message)
 
     if context_docs:
+
+        if os.getenv("MULTIMODAL_ANSWERING_WITH_RAW_IMAGE", False):
+            image_found = False
+
+            for i, chunk in enumerate(context_docs):
+                while not image_found:
+                    # Check if the chunk contains an image
+                    if "image" in chunk.metadata.keys():
+                        # Retrieve the base64 image string
+                        base64_image = str(chunk.metadata["image"])
+                        img_urls.append(f"data:image/jpeg;base64,{base64_image}")
+
+                        # Remove chunk (summary) from context_docs
+                        context_docs = [chunk_value for index, chunk_value in enumerate(context_docs) if index != i]
+                        image_found = True
+
+                        logger.info(
+                            "Retrieved chunk contains an image -> added image to user prompt."
+                        )
+                        logger.info(
+                            f"used image to answer question: \n{chunk.document_id}"
+                        )
+
         context_docs_str = build_complete_context_str(context_docs)
         optional_ignore = "" if all_doc_useful else DEFAULT_IGNORE_STATEMENT
 
