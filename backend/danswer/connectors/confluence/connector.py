@@ -166,6 +166,7 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         Takes in a confluence object, extracts all metadata, and converts it into a document.
         If its a page, it extracts the text, adds the comments for the document text.
         If its an attachment, it just downloads the attachment and converts that into a document.
+        If multimodality is true, images are extracted and summarized by the default LLM.
         """
         if self.confluence_client is None:
             raise ConnectorMissingCredentialError("Confluence")
@@ -217,9 +218,13 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             ),
             metadata=doc_metadata,
         )
+        logger.info(
+            f"Converted Confluence page - {confluence_object['title']} - to Document"
+        )
 
         image_docs = []
         if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
+            logger.info(f"Summarizing images for page: {confluence_object['title']}")
             # get images from page
             page_images = asyncio.run(
                 self._summarize_page_images(
@@ -249,6 +254,9 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                             metadata=doc_metadata,
                         )
                     )
+                logger.debug(
+                    f"Added {len(page_images)} image documents for page: {confluence_object['title']}"
+                )
 
         return doc, image_docs
 
@@ -414,9 +422,10 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                 )
                 return None
 
+            # get image summary
+            # format user prompt: add page title and XML content of page to enable a better summarization of the llm
             USER_PROMPT = USER_PROMPT.format(title=title, page_title=page["title"])
             image_context = USER_PROMPT + confluence_xml
-
             summary = summarize_image(image_data, image_context, SYSTEM_PROMPT)
 
             base64_image = base64.b64encode(image_data).decode("utf-8")

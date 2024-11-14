@@ -5,6 +5,7 @@ from io import BytesIO
 
 from openai import AzureOpenAI
 from openai import BadRequestError
+from openai import OpenAIError
 from openai import RateLimitError
 from PIL import Image
 from tenacity import before_sleep_log
@@ -27,14 +28,14 @@ logger = setup_logger()
 def summarize_image(
     image_data: bytes, query: str | None = None, system_prompt: str | None = None
 ) -> str | None:
-    """Use ChatGPT to generate a summary of an image."""
-    # initialize the Azure OpenAI Model
-
+    """Use default LLM (if it is multimodal) to generate a summary of an image."""
+    # resize image if its bigger than 20MB
     image_data = _resize_image_if_needed(image_data)
 
-    # encode image (for llm)
+    # encode image (base64)
     encoded_image = _encode_image(image_data)
 
+    # initialize LLM model
     model = AzureOpenAI()
 
     if not query:
@@ -71,6 +72,10 @@ def summarize_image(
 
     except BadRequestError as e:
         logger.warning(f"BadRequestError: {e}")
+    except OpenAIError as e:
+        logger.warning(f"OpenAI error: {e}")
+    except Exception as e:
+        logger.warning(f"An unexpected error occurred: {e}")
 
 
 deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
