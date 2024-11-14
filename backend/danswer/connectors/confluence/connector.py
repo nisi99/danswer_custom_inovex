@@ -1,27 +1,29 @@
 import asyncio
 import base64
-import re
 from datetime import datetime
 from datetime import timezone
 from typing import Any
 from typing import Dict
 from typing import List
-
+from typing import Optional
+from typing import Tuple
 from urllib.parse import quote
 
 import bs4  # type: ignore
-import requests # type: ignore
+import requests  # type: ignore
 from atlassian import Confluence  # type:ignore
-from attr import dataclass # type: ignore
-from bs4 import SoupStrainer # type: ignore
+from attr import dataclass  # type: ignore
+from bs4 import SoupStrainer  # type: ignore
 
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
 from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
 from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
-from danswer.configs.chat_configs import SYSTEM_PROMPT, USER_PROMPT
+from danswer.configs.chat_configs import SYSTEM_PROMPT
+from danswer.configs.chat_configs import USER_PROMPT
 from danswer.configs.constants import DocumentSource
-from danswer.connectors.confluence.onyx_confluence import OnyxConfluence, handle_confluence_rate_limit
+from danswer.connectors.confluence.onyx_confluence import handle_confluence_rate_limit
+from danswer.connectors.confluence.onyx_confluence import OnyxConfluence
 from danswer.connectors.confluence.utils import attachment_to_content
 from danswer.connectors.confluence.utils import build_confluence_client
 from danswer.connectors.confluence.utils import build_confluence_document_id
@@ -38,9 +40,7 @@ from danswer.connectors.models import ConnectorMissingCredentialError
 from danswer.connectors.models import Document
 from danswer.connectors.models import Section
 from danswer.connectors.models import SlimDocument
-
 from danswer.file_processing.image_summarization import summarize_image
-
 from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -57,7 +57,6 @@ _PAGE_EXPANSION_FIELDS = [
     "metadata.labels",
 ]
 _ATTACHMENT_EXPANSION_FIELDS = [
-    "body.storage.value",
     "version",
     "space",
     "metadata.labels",
@@ -162,7 +161,7 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
 
     def _convert_object_to_document(
         self, confluence_object: dict[str, Any]
-    ) -> Document | None:
+    ) -> Tuple[Optional[Document], Optional[List]]:
         """
         Takes in a confluence object, extracts all metadata, and converts it into a document.
         If its a page, it extracts the text, adds the comments for the document text.
@@ -221,15 +220,16 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
 
         image_docs = []
         if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
-            # get summaries of images from page
+            # get images from page
             page_images = asyncio.run(
-                self._summarize_page_images(confluence_object, self.confluence_client, USER_PROMPT)
+                self._summarize_page_images(
+                    confluence_object, self.confluence_client, USER_PROMPT
+                )
             )
             # add tag to flag summaries (needed to switch between base and multimodal danswer)
             doc_metadata["is_image_summary"] = "True"
 
-            # if page contains any images:
-            # add caption of each image to doc/chunks
+            # if page contains any images: add caption of each image to document
             if page_images:
                 for image in page_images:
                     image_docs.append(
@@ -242,14 +242,15 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                             semantic_identifier=image.title,
                             doc_updated_at=last_modified,
                             primary_owners=(
-                                [BasicExpertInfo(email=author_email)] if author_email else None
+                                [BasicExpertInfo(email=author_email)]
+                                if author_email
+                                else None
                             ),
                             metadata=doc_metadata,
                         )
                     )
 
         return doc, image_docs
-
 
     def _fetch_document_batches(self) -> GenerateDocumentsOutput:
         if self.confluence_client is None:
@@ -288,7 +289,6 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                 expand=",".join(_ATTACHMENT_EXPANSION_FIELDS),
             ):
                 for attachment in attachments:
-                    logger.warning(f'attachment: {attachment}')
                     doc, image_docs = self._convert_object_to_document(attachment)
                     if doc is not None:
                         doc_batch.append(doc)
@@ -374,7 +374,6 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
     ) -> str:
         return confluence_client.url + attachment["_links"]["download"]
 
-
     @classmethod
     async def _summarize_page_images(
         cls, page: Dict[str, Any], confluence_client: Confluence, USER_PROMPT: str
@@ -383,13 +382,13 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
 
         page_id = page["id"]
         confluence_xml = page["body"]["storage"]["value"]
-        logger.warning(f"confluence_xml: {confluence_xml}")
         attachments = cls._get_embedded_image_attachments(
             confluence_client, confluence_xml, page_id
         )
 
-        image_urls_test = re.findall(r'ac:src="([^"]+)"', confluence_xml)
-        logger.warning(f"image_urls_test: {image_urls_test}")
+        # TODO: Handling of image not present in attachments...(?)
+        # image_urls_test = re.findall(r'ac:src="([^"]+)"', confluence_xml)
+        # logger.warning(f"image_urls_test: {image_urls_test}")
 
         async def summarize_attachment(attachment, USER_PROMPT):
             title = attachment["title"]
@@ -411,7 +410,7 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
                 )
                 return None
 
-            USER_PROMPT = USER_PROMPT.format(title=title, page_title=page['title'])
+            USER_PROMPT = USER_PROMPT.format(title=title, page_title=page["title"])
             image_context = USER_PROMPT + confluence_xml
 
             summary = summarize_image(image_data, image_context, SYSTEM_PROMPT)
@@ -427,7 +426,10 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             )
 
         results = await asyncio.gather(
-            *[summarize_attachment(attachment, USER_PROMPT) for attachment in attachments]
+            *[
+                summarize_attachment(attachment, USER_PROMPT)
+                for attachment in attachments
+            ]
         )
 
         return [result for result in results if result is not None]
@@ -482,6 +484,5 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         attachments_container = get_attachments_from_content(
             page_id, start=0, limit=500, expand=expand
         )
-        logger.warning(f"attachments_container: {attachments_container}")
         attachments = attachments_container["results"]
         return attachments

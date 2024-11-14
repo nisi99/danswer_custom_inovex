@@ -3,7 +3,8 @@ import logging
 import os
 from io import BytesIO
 
-from openai import AzureOpenAI, BadRequestError
+from openai import AzureOpenAI
+from openai import BadRequestError
 from openai import RateLimitError
 from PIL import Image
 from tenacity import before_sleep_log
@@ -23,7 +24,9 @@ logger = setup_logger()
     stop=stop_after_attempt(6),
     before_sleep=before_sleep_log(logger.logger, logging.WARN),
 )
-def summarize_image(image_data: bytes, query: str | None = None, system_prompt: str | None = None) -> str | None:
+def summarize_image(
+    image_data: bytes, query: str | None = None, system_prompt: str | None = None
+) -> str | None:
     """Use ChatGPT to generate a summary of an image."""
     # initialize the Azure OpenAI Model
 
@@ -68,7 +71,6 @@ def summarize_image(image_data: bytes, query: str | None = None, system_prompt: 
 
     except BadRequestError as e:
         logger.warning(f"BadRequestError: {e}")
-
 
 
 deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
