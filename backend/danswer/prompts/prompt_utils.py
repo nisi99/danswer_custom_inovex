@@ -15,7 +15,9 @@ from danswer.prompts.constants import CODE_BLOCK_PAT
 from danswer.search.models import InferenceChunk
 from danswer.utils.logger import setup_logger
 
+
 logger = setup_logger()
+
 
 MOST_BASIC_PROMPT = "You are a helpful AI assistant."
 DANSWER_DATETIME_REPLACEMENT = "DANSWER_DATETIME_REPLACEMENT"
