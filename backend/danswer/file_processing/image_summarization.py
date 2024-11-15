@@ -1,30 +1,15 @@
 import base64
-import logging
-import os
 from io import BytesIO
 
-from openai import AzureOpenAI
-from openai import BadRequestError
-from openai import OpenAIError
-from openai import RateLimitError
 from PIL import Image
-from tenacity import before_sleep_log
-from tenacity import retry
-from tenacity import retry_if_exception_type
-from tenacity import stop_after_attempt
-from tenacity import wait_random_exponential
 
+from danswer.llm.factory import get_default_llms
+from danswer.llm.utils import message_to_string
 from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
 
 
-@retry(
-    retry=retry_if_exception_type(RateLimitError),
-    wait=wait_random_exponential(min=1, max=60),
-    stop=stop_after_attempt(6),
-    before_sleep=before_sleep_log(logger.logger, logging.WARN),
-)
 def summarize_image(
     image_data: bytes, query: str | None = None, system_prompt: str | None = None
 ) -> str | None:
@@ -35,50 +20,44 @@ def summarize_image(
     # encode image (base64)
     encoded_image = _encode_image(image_data)
 
-    # initialize LLM model
-    model = AzureOpenAI()
-
-    if not query:
-        query = "Summarize the content and the subject of the picture."
-    if not system_prompt:
-        system_prompt = """
-            You are an assistant for summarizing images for retrieval.
-            Summarize the content of the following image and be as precise as possible.
-            The summary will be embedded and used to retrieve the original image.
-            Therefore, write a concise summary of the image that is optimized for retrieval.
-        """
-
     try:
-        res = model.chat.completions.create(
-            model=deployment_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": query},
-                        {"type": "image_url", "image_url": {"url": encoded_image}},
-                    ],
-                },
-            ],
-            temperature=0.0,
-        )
-        summary = res.choices[0].message.content
+        llm, _ = get_default_llms(timeout=5)
 
-        return summary
+        if not query:
+            query = "Summarize the content and the subject of the picture."
+        if not system_prompt:
+            system_prompt = """
+                You are an assistant for summarizing images for retrieval.
+                Summarize the content of the following image and be as precise as possible.
+                The summary will be embedded and used to retrieve the original image.
+                Therefore, write a concise summary of the image that is optimized for retrieval.
+            """
 
-    except BadRequestError as e:
-        logger.warning(f"BadRequestError: {e}")
-    except OpenAIError as e:
-        logger.warning(f"OpenAI error: {e}")
+        messages = [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": query},
+                    {"type": "image_url", "image_url": {"url": encoded_image}},
+                ],
+            },
+        ]
+        # filled_llm_prompt = dict_based_prompt_to_langchain_prompt([messages[1]])
+        # model_output_short = message_to_string(llm.invoke(filled_llm_prompt))
+
+        model_output = message_to_string(llm.invoke(messages))
+
+        return model_output
+
     except Exception as e:
-        logger.warning(f"An unexpected error occurred: {e}")
+        logger.warning(f"An error occurred: {e}")
 
 
-deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+# deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 
 
 def _encode_image(image_data: bytes) -> str:

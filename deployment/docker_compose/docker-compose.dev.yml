@@ -225,12 +225,6 @@ services:
       # Enterprise Edition stuff
       - ENABLE_PAID_ENTERPRISE_EDITION_FEATURES=${ENABLE_PAID_ENTERPRISE_EDITION_FEATURES:-false}
 
-      # AzureOpenAI Credentials for gpt-4o -> for summary generation of images+tables
-      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-}
-      - AZURE_OPENAI_VERSION=${AZURE_OPENAI_VERSION:-}
-      - OPENAI_API_VERSION=${OPENAI_API_VERSION:-}
       # Multimodal-Settings
       - MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE=${MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:-}
       # (optional) Custom Prompt for Image Summarization
