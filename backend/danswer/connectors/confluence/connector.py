@@ -238,7 +238,6 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             # if page contains any images: add caption of each image to document
             if page_images:
                 for image in page_images:
-                    logger.warning(f"image.summary: {image.summary}")
                     if MULTIMODAL_ANSWERING_WITH_RAW_IMAGE:
                         doc_metadata["image"] = image.base64_encoded
 
