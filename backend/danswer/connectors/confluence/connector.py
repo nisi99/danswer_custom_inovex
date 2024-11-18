@@ -18,6 +18,7 @@ from bs4 import SoupStrainer  # type: ignore
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
 from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
+from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_RAW_IMAGE
 from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
 from danswer.configs.chat_configs import SYSTEM_PROMPT
 from danswer.configs.chat_configs import USER_PROMPT
@@ -237,6 +238,10 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             # if page contains any images: add caption of each image to document
             if page_images:
                 for image in page_images:
+                    logger.warning(f"image.summary: {image.summary}")
+                    if MULTIMODAL_ANSWERING_WITH_RAW_IMAGE:
+                        doc_metadata["image"] = image.base64_encoded
+
                     image_docs.append(
                         Document(
                             id=image.url,

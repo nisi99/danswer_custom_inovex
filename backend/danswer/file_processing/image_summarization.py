@@ -4,6 +4,7 @@ from io import BytesIO
 from PIL import Image
 
 from danswer.llm.factory import get_default_llms
+from danswer.llm.utils import dict_based_prompt_to_langchain_prompt
 from danswer.llm.utils import message_to_string
 from danswer.utils.logger import setup_logger
 
@@ -46,10 +47,12 @@ def summarize_image(
                 ],
             },
         ]
-        # filled_llm_prompt = dict_based_prompt_to_langchain_prompt([messages[1]])
-        # model_output_short = message_to_string(llm.invoke(filled_llm_prompt))
+        filled_llm_prompt = dict_based_prompt_to_langchain_prompt([messages[1]])
+        model_output_short = message_to_string(llm.invoke(filled_llm_prompt))
+        logger.warning(f"model_output_short: {model_output_short}")
 
         model_output = message_to_string(llm.invoke(messages))
+        logger.warning(f"model_output: {model_output}")
 
         return model_output
 
