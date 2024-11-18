@@ -54,7 +54,9 @@ def summarize_image(
         return model_output
 
     except Exception as e:
-        logger.warning(f"An error occurred: {e}")
+        raise ValueError(
+            f"Summarization failed with error: {e}.\nCheck if your LLM is configured and multimodal."
+        )
 
 
 # deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
