@@ -70,4 +70,4 @@ def process_in_batches(
 
 
 def get_metadata_keys_to_ignore() -> list[str]:
-    return [IGNORE_FOR_QA, "image"]
+    return [IGNORE_FOR_QA]
