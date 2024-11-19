@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import io
 from datetime import datetime
 from datetime import timezone
 from typing import Any
@@ -14,6 +15,7 @@ import requests  # type: ignore
 from atlassian import Confluence  # type:ignore
 from attr import dataclass  # type: ignore
 from bs4 import SoupStrainer  # type: ignore
+from PIL import Image
 
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
 from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
@@ -41,6 +43,8 @@ from danswer.connectors.models import Document
 from danswer.connectors.models import Section
 from danswer.connectors.models import SlimDocument
 from danswer.file_processing.image_summarization import summarize_image
+from danswer.llm.factory import get_default_llms
+from danswer.llm.utils import message_to_string
 from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -125,6 +129,44 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             labels_to_skip = list(set(labels_to_skip))
             comma_separated_labels = ",".join(f"'{label}'" for label in labels_to_skip)
             self.cql_label_filter = f" and label not in ({comma_separated_labels})"
+
+        # check if llm is configured and multimodal
+        self.check_llm_configuration()
+
+    def check_llm_configuration(self):
+        """Checks if LLM is configured and multimodal if multimodal features should be used."""
+        if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
+            try:
+                llm, _ = get_default_llms(timeout=5)
+
+                # create dummy image to test if llm is multimodal
+                image = Image.new("RGB", (200, 200), color="blue")
+                img_byte_arr = io.BytesIO()
+                image.save(img_byte_arr, format="png")
+                img_byte_arr.seek(0)
+                base64_image = base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")
+
+                message = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "What does the image show?"},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                },
+                            },
+                        ],
+                    },
+                ]
+                response = message_to_string(llm.invoke(message))
+                if response:
+                    logger.notice("Connection to multimodal LLM successful.")
+            except Exception as e:
+                raise ValueError(
+                    f"LLM not configured or not multimodal. Please fix your LLM configuration and retry. Exception: {e}"
+                )
 
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
         # see https://github.com/atlassian-api/atlassian-python-api/blob/master/atlassian/rest_client.py
@@ -397,10 +439,6 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         attachments = cls._get_embedded_image_attachments(
             confluence_client, confluence_xml, page_id
         )
-
-        # TODO: Handling of image not present in attachments...(?)
-        # image_urls_test = re.findall(r'ac:src="([^"]+)"', confluence_xml)
-        # logger.warning(f"image_urls_test: {image_urls_test}")
 
         async def summarize_attachment(attachment, USER_PROMPT):
             title = attachment["title"]

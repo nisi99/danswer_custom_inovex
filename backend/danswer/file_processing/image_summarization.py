@@ -59,9 +59,6 @@ def summarize_image(
         )
 
 
-# deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
-
-
 def _encode_image(image_data: bytes) -> str:
     """Getting the base64 string."""
     base64_encoded_data = base64.b64encode(image_data).decode("utf-8")
