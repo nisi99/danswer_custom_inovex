@@ -18,11 +18,13 @@ from bs4 import SoupStrainer  # type: ignore
 from PIL import Image
 
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
+from danswer.configs.app_configs import (
+    CONFLUENCE_IMAGE_SUMMARIZATION_MULTIMODAL_ANSWERING,
+)
 from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.configs.app_configs import INDEX_BATCH_SIZE
-from danswer.configs.app_configs import MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE
-from danswer.configs.chat_configs import SYSTEM_PROMPT
-from danswer.configs.chat_configs import USER_PROMPT
+from danswer.configs.chat_configs import CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT
+from danswer.configs.chat_configs import CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT
 from danswer.configs.constants import DocumentSource
 from danswer.connectors.confluence.onyx_confluence import handle_confluence_rate_limit
 from danswer.connectors.confluence.onyx_confluence import OnyxConfluence
@@ -135,7 +137,7 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
 
     def check_llm_configuration(self):
         """Checks if LLM is configured and multimodal if multimodal features should be used."""
-        if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
+        if CONFLUENCE_IMAGE_SUMMARIZATION_MULTIMODAL_ANSWERING:
             try:
                 llm, _ = get_default_llms(timeout=5)
 
@@ -265,12 +267,14 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         )
 
         image_docs = []
-        if MULTIMODAL_ANSWERING_WITH_SUMMARY_IMAGE:
+        if CONFLUENCE_IMAGE_SUMMARIZATION_MULTIMODAL_ANSWERING:
             logger.info(f"Summarizing images for page: {confluence_object['title']}")
             # get images from page
             page_images = asyncio.run(
                 self._summarize_page_images(
-                    confluence_object, self.confluence_client, USER_PROMPT
+                    confluence_object,
+                    self.confluence_client,
+                    CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT,
                 )
             )
             # add tag to flag summaries (needed to switch between base and multimodal danswer)
@@ -462,9 +466,12 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
 
             # get image summary
             # format user prompt: add page title and XML content of page to enable a better summarization of the llm
-            USER_PROMPT = USER_PROMPT.format(title=title, page_title=page["title"])
-            image_context = USER_PROMPT + confluence_xml
-            summary = summarize_image(image_data, image_context, SYSTEM_PROMPT)
+            USER_PROMPT = CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT.format(
+                title=title, page_title=page["title"], confluence_xml=confluence_xml
+            )
+            summary = summarize_image(
+                image_data, USER_PROMPT, CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT
+            )
 
             base64_image = base64.b64encode(image_data).decode("utf-8")
 
