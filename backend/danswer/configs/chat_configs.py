@@ -105,7 +105,13 @@ VESPA_SEARCHER_THREADS = int(os.environ.get("VESPA_SEARCHER_THREADS") or 2)
 # The summary will be embedded and used to retrieve the original image.
 # Therefore, write a concise summary of the image that is optimized for retrieval.""""
 CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT = (
-    os.environ.get("CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT") or None
+    os.environ.get("CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT")
+    or """
+    You are an assistant for summarizing images for retrieval.
+    Summarize the content of the following image and be as precise as possible.
+    The summary will be embedded and used to retrieve the original image.
+    Therefore, write a concise summary of the image that is optimized for retrieval.
+    """
 )
 
 # Custom User Prompt for Image Summarization
@@ -113,5 +119,11 @@ CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT = (
 # Default prompt:
 # """Summarize the content and the subject of the picture."""
 CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT = (
-    os.environ.get("CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT") or None
+    os.environ.get("CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT")
+    or """
+    The image has the file name '{title}' and is embedded on a Confluence page with the title '{page_title}'.
+    Describe precisely and concisely what the image shows in the context of the page and what it is used for.
+    The following is the XML source text of the page:
+    {confluence_xml}
+    """
 )

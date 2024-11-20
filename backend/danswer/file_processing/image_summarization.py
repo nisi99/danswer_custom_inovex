@@ -38,15 +38,6 @@ def summarize_image(
     llm: LLM | None = None,
 ) -> str | None:
     """Use default LLM (if it is multimodal) to generate a summary of an image."""
-    if not query:
-        query = "Summarize the content and the subject of the picture."
-    if not system_prompt:
-        system_prompt = """
-            You are an assistant for summarizing images for retrieval.
-            Summarize the content of the following image and be as precise as possible.
-            The summary will be embedded and used to retrieve the original image.
-            Therefore, write a concise summary of the image that is optimized for retrieval.
-        """
 
     messages = [
         {
@@ -69,9 +60,11 @@ def summarize_image(
 
     except Exception as e:
         if CONTINUE_ON_CONNECTOR_FAILURE:
+            # Summary of this image will be empty
+            # prevents and infinity retry-loop of the indexing if single summaries fail
+            # for example because content filters got triggert...
             logger.warning(f"Summarization failed with error: {e}.")
         else:
-            logger.warning(f"test test: {e}.")
             raise RuntimeError(f"Summarization failed with error: {e}.")
 
 
