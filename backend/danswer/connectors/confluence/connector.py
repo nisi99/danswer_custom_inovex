@@ -42,7 +42,7 @@ from danswer.connectors.models import ConnectorMissingCredentialError
 from danswer.connectors.models import Document
 from danswer.connectors.models import Section
 from danswer.connectors.models import SlimDocument
-from danswer.file_processing.image_summarization import summarize_image
+from danswer.file_processing.image_summarization import summarize_image_pipeline
 from danswer.llm.factory import get_default_llms
 from danswer.utils.logger import setup_logger
 
@@ -451,7 +451,7 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             USER_PROMPT = CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT.format(
                 title=title, page_title=page["title"], confluence_xml=confluence_xml
             )
-            summary = summarize_image(
+            summary = summarize_image_pipeline(
                 image_data, USER_PROMPT, CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT
             )
 
