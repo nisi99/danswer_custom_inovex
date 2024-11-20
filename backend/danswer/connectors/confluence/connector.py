@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import io
 from datetime import datetime
 from datetime import timezone
 from typing import Any
@@ -15,7 +14,6 @@ import requests  # type: ignore
 from atlassian import Confluence  # type:ignore
 from attr import dataclass  # type: ignore
 from bs4 import SoupStrainer  # type: ignore
-from PIL import Image
 
 from danswer.configs.app_configs import CONFLUENCE_CONNECTOR_LABELS_TO_SKIP
 from danswer.configs.app_configs import (
@@ -46,7 +44,6 @@ from danswer.connectors.models import Section
 from danswer.connectors.models import SlimDocument
 from danswer.file_processing.image_summarization import summarize_image
 from danswer.llm.factory import get_default_llms
-from danswer.llm.utils import message_to_string
 from danswer.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -140,34 +137,19 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         if CONFLUENCE_IMAGE_SUMMARIZATION_MULTIMODAL_ANSWERING:
             try:
                 llm, _ = get_default_llms(timeout=5)
+                vision_support = llm.vision_support()
 
-                # create dummy image to test if llm is multimodal
-                image = Image.new("RGB", (200, 200), color="blue")
-                img_byte_arr = io.BytesIO()
-                image.save(img_byte_arr, format="png")
-                img_byte_arr.seek(0)
-                base64_image = base64.b64encode(img_byte_arr.getvalue()).decode("utf-8")
-
-                message = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "What does the image show?"},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                },
-                            },
-                        ],
-                    },
-                ]
-                response = message_to_string(llm.invoke(message))
-                if response:
+                if vision_support:
                     logger.notice("Connection to multimodal LLM successful.")
+                else:
+                    raise ValueError(
+                        "Your default LLM seems to be not multimodal. Please use a LLM that supports vision and retry"
+                    )
+
             except Exception as e:
                 raise ValueError(
-                    f"LLM not configured or not multimodal. Please fix your LLM configuration and retry. Exception: {e}"
+                    "Something seems to be wrong with your default LLM. Please configure a multimodal LLM and retry.",
+                    f"Exception: {e}",
                 )
 
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
