@@ -130,27 +130,35 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             self.cql_label_filter = f" and label not in ({comma_separated_labels})"
 
         # check if llm is configured and multimodal
-        self.check_llm_configuration()
+        if CONFLUENCE_IMAGE_SUMMARIZATION_MULTIMODAL_ANSWERING:
+            self.check_llm_configuration()
 
     def check_llm_configuration(self):
         """Checks if LLM is configured and multimodal if multimodal features should be used."""
-        if CONFLUENCE_IMAGE_SUMMARIZATION_MULTIMODAL_ANSWERING:
-            try:
-                llm, _ = get_default_llms(timeout=5)
-                vision_support = llm.vision_support()
+        try:
+            llm, _ = get_default_llms(timeout=5)
+            self.validate_llm(llm)  # Call the new method with the LLM
 
-                if vision_support:
-                    logger.notice("Connection to multimodal LLM successful.")
-                else:
-                    raise ValueError(
-                        "Your default LLM seems to be not multimodal. Please use a LLM that supports vision and retry"
-                    )
+        except Exception as e:
+            raise ValueError(
+                f"Something seems to be wrong with your default LLM. Please configure a multimodal LLM and retry. Exception: {e}"
+            )
 
-            except Exception as e:
-                raise ValueError(
-                    "Something seems to be wrong with your default LLM. Please configure a multimodal LLM and retry.",
-                    f"Exception: {e}",
-                )
+    def validate_llm(self, llm):
+        """Validates the LLM to check if it supports vision."""
+        if llm is None:
+            raise ValueError(
+                "No LLM is defined. Please configure a multimodal LLM and retry."
+            )
+
+        vision_support = llm.vision_support()
+
+        if vision_support:
+            logger.notice("Connection to multimodal LLM successful.")
+        else:
+            raise ValueError(
+                "Your default LLM seems to be not multimodal. Please use a LLM that supports vision and retry."
+            )
 
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
         # see https://github.com/atlassian-api/atlassian-python-api/blob/master/atlassian/rest_client.py
@@ -511,7 +519,12 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             ]
         ]
 
-        return [*image_attachments, *gliffy_attachments]
+        # Combine and ensure uniqueness
+        combined_attachments = {
+            att["id"]: att for att in image_attachments + gliffy_attachments
+        }.values()
+
+        return list(combined_attachments)
 
     @classmethod
     def _get_page_attachments(
