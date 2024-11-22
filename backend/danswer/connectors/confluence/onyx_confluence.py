@@ -20,6 +20,10 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 RATE_LIMIT_MESSAGE_LOWERCASE = "Rate limit exceeded".lower()
 
+# https://jira.atlassian.com/browse/CONFCLOUD-76433
+_PROBLEMATIC_EXPANSIONS = "body.storage.value"
+_REPLACEMENT_EXPANSIONS = "body.view.value"
+
 
 class ConfluenceRateLimitError(Exception):
     pass
@@ -80,7 +84,7 @@ def handle_confluence_rate_limit(confluence_call: F) -> F:
     def wrapped_call(*args: list[Any], **kwargs: Any) -> Any:
         MAX_RETRIES = 5
 
-        TIMEOUT = 3600
+        TIMEOUT = 600
         timeout_at = time.monotonic() + TIMEOUT
 
         for attempt in range(MAX_RETRIES):
@@ -95,6 +99,10 @@ def handle_confluence_rate_limit(confluence_call: F) -> F:
                 return confluence_call(*args, **kwargs)
             except HTTPError as e:
                 delay_until = _handle_http_error(e, attempt)
+                logger.warning(
+                    f"HTTPError in confluence call. "
+                    f"Retrying in {delay_until} seconds..."
+                )
                 while time.monotonic() < delay_until:
                     # in the future, check a signal here to exit
                     time.sleep(1)
@@ -141,7 +149,7 @@ class OnyxConfluence(Confluence):
 
     def _paginate_url(
         self, url_suffix: str, limit: int | None = None
-    ) -> Iterator[list[dict[str, Any]]]:
+    ) -> Iterator[dict[str, Any]]:
         """
         This will paginate through the top level query.
         """
@@ -153,46 +161,43 @@ class OnyxConfluence(Confluence):
 
         while url_suffix:
             try:
+                logger.debug(f"Making confluence call to {url_suffix}")
                 next_response = self.get(url_suffix)
             except Exception as e:
-                logger.exception("Error in danswer_cql: \n")
-                raise e
-            yield next_response.get("results", [])
+                logger.warning(f"Error in confluence call to {url_suffix}")
+
+                # If the problematic expansion is in the url, replace it
+                # with the replacement expansion and try again
+                # If that fails, raise the error
+                if _PROBLEMATIC_EXPANSIONS not in url_suffix:
+                    logger.exception(f"Error in confluence call to {url_suffix}")
+                    raise e
+                logger.warning(
+                    f"Replacing {_PROBLEMATIC_EXPANSIONS} with {_REPLACEMENT_EXPANSIONS}"
+                    " and trying again."
+                )
+                url_suffix = url_suffix.replace(
+                    _PROBLEMATIC_EXPANSIONS,
+                    _REPLACEMENT_EXPANSIONS,
+                )
+                continue
+
+            # yield the results individually
+            yield from next_response.get("results", [])
+
             url_suffix = next_response.get("_links", {}).get("next")
 
-    def paginated_groups_retrieval(
-        self,
-        limit: int | None = None,
-    ) -> Iterator[list[dict[str, Any]]]:
-        return self._paginate_url("rest/api/group", limit)
-
-    def paginated_group_members_retrieval(
-        self,
-        group_name: str,
-        limit: int | None = None,
-    ) -> Iterator[list[dict[str, Any]]]:
-        group_name = quote(group_name)
-        return self._paginate_url(f"rest/api/group/{group_name}/member", limit)
-
-    def paginated_cql_user_retrieval(
+    def paginated_cql_retrieval(
         self,
         cql: str,
         expand: str | None = None,
         limit: int | None = None,
-    ) -> Iterator[list[dict[str, Any]]]:
+    ) -> Iterator[dict[str, Any]]:
+        """
+        The content/search endpoint can be used to fetch pages, attachments, and comments.
+        """
         expand_string = f"&expand={expand}" if expand else ""
-        return self._paginate_url(
-            f"rest/api/search/user?cql={cql}{expand_string}", limit
-        )
-
-    def paginated_cql_page_retrieval(
-        self,
-        cql: str,
-        expand: str | None = None,
-        limit: int | None = None,
-    ) -> Iterator[list[dict[str, Any]]]:
-        expand_string = f"&expand={expand}" if expand else ""
-        return self._paginate_url(
+        yield from self._paginate_url(
             f"rest/api/content/search?cql={cql}{expand_string}", limit
         )
 
@@ -201,7 +206,7 @@ class OnyxConfluence(Confluence):
         cql: str,
         expand: str | None = None,
         limit: int | None = None,
-    ) -> Iterator[list[dict[str, Any]]]:
+    ) -> Iterator[dict[str, Any]]:
         """
         This function will paginate through the top level query first, then
         paginate through all of the expansions.
@@ -221,6 +226,110 @@ class OnyxConfluence(Confluence):
                 for item in data:
                     _traverse_and_update(item)
 
-        for results in self.paginated_cql_page_retrieval(cql, expand, limit):
-            _traverse_and_update(results)
-            yield results
+        for confluence_object in self.paginated_cql_retrieval(cql, expand, limit):
+            _traverse_and_update(confluence_object)
+            yield confluence_object
+
+    def paginated_cql_user_retrieval(
+        self,
+        expand: str | None = None,
+        limit: int | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """
+        The search/user endpoint can be used to fetch users.
+        It's a seperate endpoint from the content/search endpoint used only for users.
+        Otherwise it's very similar to the content/search endpoint.
+        """
+        cql = "type=user"
+        url = "rest/api/search/user" if self.cloud else "rest/api/search"
+        expand_string = f"&expand={expand}" if expand else ""
+        url += f"?cql={cql}{expand_string}"
+        yield from self._paginate_url(url, limit)
+
+    def paginated_groups_by_user_retrieval(
+        self,
+        user: dict[str, Any],
+        limit: int | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """
+        This is not an SQL like query.
+        It's a confluence specific endpoint that can be used to fetch groups.
+        """
+        user_field = "accountId" if self.cloud else "key"
+        user_value = user["accountId"] if self.cloud else user["userKey"]
+        # Server uses userKey (but calls it key during the API call), Cloud uses accountId
+        user_query = f"{user_field}={quote(user_value)}"
+
+        url = f"rest/api/user/memberof?{user_query}"
+        yield from self._paginate_url(url, limit)
+
+    def paginated_groups_retrieval(
+        self,
+        limit: int | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """
+        This is not an SQL like query.
+        It's a confluence specific endpoint that can be used to fetch groups.
+        """
+        yield from self._paginate_url("rest/api/group", limit)
+
+    def paginated_group_members_retrieval(
+        self,
+        group_name: str,
+        limit: int | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """
+        This is not an SQL like query.
+        It's a confluence specific endpoint that can be used to fetch the members of a group.
+        THIS DOESN'T WORK FOR SERVER because it breaks when there is a slash in the group name.
+        E.g. neither "test/group" nor "test%2Fgroup" works for confluence.
+        """
+        group_name = quote(group_name)
+        yield from self._paginate_url(f"rest/api/group/{group_name}/member", limit)
+
+
+def _validate_connector_configuration(
+    credentials: dict[str, Any],
+    is_cloud: bool,
+    wiki_base: str,
+) -> None:
+    # test connection with direct client, no retries
+    confluence_client_without_retries = Confluence(
+        api_version="cloud" if is_cloud else "latest",
+        url=wiki_base.rstrip("/"),
+        username=credentials["confluence_username"] if is_cloud else None,
+        password=credentials["confluence_access_token"] if is_cloud else None,
+        token=credentials["confluence_access_token"] if not is_cloud else None,
+    )
+    spaces = confluence_client_without_retries.get_all_spaces(limit=1)
+
+    if not spaces:
+        raise RuntimeError(
+            f"No spaces found at {wiki_base}! "
+            "Check your credentials and wiki_base and make sure "
+            "is_cloud is set correctly."
+        )
+
+
+def build_confluence_client(
+    credentials: dict[str, Any],
+    is_cloud: bool,
+    wiki_base: str,
+) -> OnyxConfluence:
+    _validate_connector_configuration(
+        credentials=credentials,
+        is_cloud=is_cloud,
+        wiki_base=wiki_base,
+    )
+    return OnyxConfluence(
+        api_version="cloud" if is_cloud else "latest",
+        # Remove trailing slash from wiki_base if present
+        url=wiki_base.rstrip("/"),
+        # passing in username causes issues for Confluence data center
+        username=credentials["confluence_username"] if is_cloud else None,
+        password=credentials["confluence_access_token"] if is_cloud else None,
+        token=credentials["confluence_access_token"] if not is_cloud else None,
+        backoff_and_retry=True,
+        max_backoff_retries=10,
+        max_backoff_seconds=60,
+    )

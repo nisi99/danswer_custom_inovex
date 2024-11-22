@@ -1,12 +1,12 @@
 from datetime import datetime
 from datetime import timezone
 
-import redis
 from celery import Celery
 from celery import shared_task
 from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
 from redis import Redis
+from redis.lock import Lock as RedisLock
 from sqlalchemy.orm import Session
 
 from danswer.background.celery.apps.app_base import task_logger
@@ -19,7 +19,7 @@ from danswer.db.engine import get_session_with_tenant
 from danswer.db.enums import ConnectorCredentialPairStatus
 from danswer.db.search_settings import get_all_search_settings
 from danswer.redis.redis_connector import RedisConnector
-from danswer.redis.redis_connector_delete import RedisConnectorDeletionFenceData
+from danswer.redis.redis_connector_delete import RedisConnectorDeletePayload
 from danswer.redis.redis_pool import get_redis_client
 
 
@@ -87,7 +87,7 @@ def try_generate_document_cc_pair_cleanup_tasks(
     cc_pair_id: int,
     db_session: Session,
     r: Redis,
-    lock_beat: redis.lock.Lock,
+    lock_beat: RedisLock,
     tenant_id: str | None,
 ) -> int | None:
     """Returns an int if syncing is needed. The int represents the number of sync tasks generated.
@@ -118,7 +118,7 @@ def try_generate_document_cc_pair_cleanup_tasks(
         return None
 
     # set a basic fence to start
-    fence_payload = RedisConnectorDeletionFenceData(
+    fence_payload = RedisConnectorDeletePayload(
         num_tasks=None,
         submitted=datetime.now(timezone.utc),
     )

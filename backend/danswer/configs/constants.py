@@ -60,7 +60,6 @@ KV_GMAIL_CRED_KEY = "gmail_app_credential"
 KV_GMAIL_SERVICE_ACCOUNT_KEY = "gmail_service_account_key"
 KV_GOOGLE_DRIVE_CRED_KEY = "google_drive_app_credential"
 KV_GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY = "google_drive_service_account_key"
-KV_SLACK_BOT_TOKENS_CONFIG_KEY = "slack_bot_tokens_config_key"
 KV_GEN_AI_KEY_CHECK_TIME = "genai_api_key_last_check_time"
 KV_SETTINGS_KEY = "danswer_settings"
 KV_CUSTOMER_UUID_KEY = "customer_uuid"
@@ -74,7 +73,7 @@ CELERY_PRIMARY_WORKER_LOCK_TIMEOUT = 120
 
 # needs to be long enough to cover the maximum time it takes to download an object
 # if we can get callbacks as object bytes download, we could lower this a lot.
-CELERY_INDEXING_LOCK_TIMEOUT = 60 * 60  # 60 min
+CELERY_INDEXING_LOCK_TIMEOUT = 3 * 60 * 60  # 60 min
 
 # needs to be long enough to cover the maximum time it takes to download an object
 # if we can get callbacks as object bytes download, we could lower this a lot.

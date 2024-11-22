@@ -24,10 +24,10 @@ from danswer.configs.app_configs import INDEX_BATCH_SIZE
 from danswer.configs.chat_configs import CONFLUENCE_IMAGE_SUMMARIZATION_SYSTEM_PROMPT
 from danswer.configs.chat_configs import CONFLUENCE_IMAGE_SUMMARIZATION_USER_PROMPT
 from danswer.configs.constants import DocumentSource
+from danswer.connectors.confluence.onyx_confluence import build_confluence_client
 from danswer.connectors.confluence.onyx_confluence import handle_confluence_rate_limit
 from danswer.connectors.confluence.onyx_confluence import OnyxConfluence
 from danswer.connectors.confluence.utils import attachment_to_content
-from danswer.connectors.confluence.utils import build_confluence_client
 from danswer.connectors.confluence.utils import build_confluence_document_id
 from danswer.connectors.confluence.utils import datetime_from_string
 from danswer.connectors.confluence.utils import extract_text_from_confluence_html
@@ -99,7 +99,7 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
     ) -> None:
         self.batch_size = batch_size
         self.continue_on_failure = continue_on_failure
-        self.confluence_client: OnyxConfluence | None = None
+        self._confluence_client: OnyxConfluence | None = None
         self.is_cloud = is_cloud
 
         # Remove trailing slash from wiki_base if present
@@ -110,15 +110,15 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         if cql_query:
             # if a cql_query is provided, we will use it to fetch the pages
             cql_page_query = cql_query
-        elif space:
-            # if no cql_query is provided, we will use the space to fetch the pages
-            cql_page_query += f" and space='{quote(space)}'"
         elif page_id:
+            # if a cql_query is not provided, we will use the page_id to fetch the page
             if index_recursively:
                 cql_page_query += f" and ancestor='{page_id}'"
             else:
-                # if neither a space nor a cql_query is provided, we will use the page_id to fetch the page
                 cql_page_query += f" and id='{page_id}'"
+        elif space:
+            # if no cql_query or page_id is provided, we will use the space to fetch the pages
+            cql_page_query += f" and space='{quote(space)}'"
 
         self.cql_page_query = cql_page_query
         self.cql_time_filter = ""
@@ -126,12 +126,20 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         self.cql_label_filter = ""
         if labels_to_skip:
             labels_to_skip = list(set(labels_to_skip))
-            comma_separated_labels = ",".join(f"'{label}'" for label in labels_to_skip)
+            comma_separated_labels = ",".join(
+                f"'{quote(label)}'" for label in labels_to_skip
+            )
             self.cql_label_filter = f" and label not in ({comma_separated_labels})"
 
         # check if llm is configured and multimodal
         if CONFLUENCE_IMAGE_SUMMARIZATION_MULTIMODAL_ANSWERING:
             self.check_llm_configuration()
+
+    @property
+    def confluence_client(self) -> OnyxConfluence:
+        if self._confluence_client is None:
+            raise ConnectorMissingCredentialError("Confluence")
+        return self._confluence_client
 
     def check_llm_configuration(self):
         """Checks if LLM is configured and multimodal if multimodal features should be used."""
@@ -163,33 +171,30 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
         # see https://github.com/atlassian-api/atlassian-python-api/blob/master/atlassian/rest_client.py
         # for a list of other hidden constructor args
-        self.confluence_client = build_confluence_client(
-            credentials_json=credentials,
+        self._confluence_client = build_confluence_client(
+            credentials=credentials,
             is_cloud=self.is_cloud,
             wiki_base=self.wiki_base,
         )
         return None
 
     def _get_comment_string_for_page_id(self, page_id: str) -> str:
-        if self.confluence_client is None:
-            raise ConnectorMissingCredentialError("Confluence")
-
         comment_string = ""
 
         comment_cql = f"type=comment and container='{page_id}'"
         comment_cql += self.cql_label_filter
 
         expand = ",".join(_COMMENT_EXPANSION_FIELDS)
-        for comments in self.confluence_client.paginated_cql_page_retrieval(
+        for comment in self.confluence_client.paginated_cql_retrieval(
             cql=comment_cql,
             expand=expand,
         ):
-            for comment in comments:
-                comment_string += "\nComment:\n"
-                comment_string += extract_text_from_confluence_html(
-                    confluence_client=self.confluence_client,
-                    confluence_object=comment,
-                )
+            comment_string += "\nComment:\n"
+            comment_string += extract_text_from_confluence_html(
+                confluence_client=self.confluence_client,
+                confluence_object=comment,
+                fetched_titles=set(),
+            )
 
         return comment_string
 
@@ -202,9 +207,6 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         If its an attachment, it just downloads the attachment and converts that into a document.
         If multimodality is true, images are extracted and summarized by the default LLM.
         """
-        if self.confluence_client is None:
-            raise ConnectorMissingCredentialError("Confluence")
-
         # The url and the id are the same
         object_url = build_confluence_document_id(
             self.wiki_base, confluence_object["_links"]["webui"], self.is_cloud
@@ -214,16 +216,19 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         # Extract text from page
         if confluence_object["type"] == "page":
             object_text = extract_text_from_confluence_html(
-                self.confluence_client, confluence_object
+                confluence_client=self.confluence_client,
+                confluence_object=confluence_object,
+                fetched_titles={confluence_object.get("title", "")},
             )
             # Add comments to text
             object_text += self._get_comment_string_for_page_id(confluence_object["id"])
         elif confluence_object["type"] == "attachment":
             object_text = attachment_to_content(
-                self.confluence_client, confluence_object
+                confluence_client=self.confluence_client, attachment=confluence_object
             )
 
         if object_text is None:
+            # This only happens for attachments that are not parseable
             return None, None
 
         # Get space name
@@ -297,15 +302,12 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         return doc, image_docs
 
     def _fetch_document_batches(self) -> GenerateDocumentsOutput:
-        if self.confluence_client is None:
-            raise ConnectorMissingCredentialError("Confluence")
-
         doc_batch: list[Document] = []
         confluence_page_ids: list[str] = []
 
         page_query = self.cql_page_query + self.cql_label_filter + self.cql_time_filter
         # Fetch pages as Documents
-        for page_batch in self.confluence_client.paginated_cql_page_retrieval(
+        for page_batch in self.confluence_client.paginated_cql_retrieval(
             cql=page_query,
             expand=",".join(_PAGE_EXPANSION_FIELDS),
             limit=self.batch_size,
@@ -328,20 +330,19 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
             attachment_cql = f"type=attachment and container='{confluence_page_id}'"
             attachment_cql += self.cql_label_filter
             # TODO: maybe should add time filter as well?
-            for attachments in self.confluence_client.paginated_cql_page_retrieval(
+            for attachment in self.confluence_client.paginated_cql_retrieval(
                 cql=attachment_cql,
                 expand=",".join(_ATTACHMENT_EXPANSION_FIELDS),
             ):
-                for attachment in attachments:
-                    doc, image_docs = self._convert_object_to_document(attachment)
-                    if doc is not None:
-                        doc_batch.append(doc)
-                    if image_docs:
-                        doc_batch.extend(image_docs)
+                doc, image_docs = self._convert_object_to_document(attachment)
+                if doc is not None:
+                    doc_batch.append(doc)
+                if image_docs:
+                    doc_batch.extend(image_docs)
 
-                    if len(doc_batch) >= self.batch_size:
-                        yield doc_batch
-                        doc_batch = []
+                if len(doc_batch) >= self.batch_size:
+                    yield doc_batch
+                    doc_batch = []
 
         if doc_batch:
             yield doc_batch
@@ -366,55 +367,50 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
         start: SecondsSinceUnixEpoch | None = None,
         end: SecondsSinceUnixEpoch | None = None,
     ) -> GenerateSlimDocumentOutput:
-        if self.confluence_client is None:
-            raise ConnectorMissingCredentialError("Confluence")
-
         doc_metadata_list: list[SlimDocument] = []
 
         restrictions_expand = ",".join(_RESTRICTIONS_EXPANSION_FIELDS)
 
         page_query = self.cql_page_query + self.cql_label_filter
-        for pages in self.confluence_client.cql_paginate_all_expansions(
+        for page in self.confluence_client.cql_paginate_all_expansions(
             cql=page_query,
             expand=restrictions_expand,
         ):
-            for page in pages:
-                # If the page has restrictions, add them to the perm_sync_data
-                # These will be used by doc_sync.py to sync permissions
-                perm_sync_data = {
-                    "restrictions": page.get("restrictions", {}),
-                    "space_key": page.get("space", {}).get("key"),
-                }
+            # If the page has restrictions, add them to the perm_sync_data
+            # These will be used by doc_sync.py to sync permissions
+            perm_sync_data = {
+                "restrictions": page.get("restrictions", {}),
+                "space_key": page.get("space", {}).get("key"),
+            }
 
+            doc_metadata_list.append(
+                SlimDocument(
+                    id=build_confluence_document_id(
+                        self.wiki_base,
+                        page["_links"]["webui"],
+                        self.is_cloud,
+                    ),
+                    perm_sync_data=perm_sync_data,
+                )
+            )
+            attachment_cql = f"type=attachment and container='{page['id']}'"
+            attachment_cql += self.cql_label_filter
+            for attachment in self.confluence_client.cql_paginate_all_expansions(
+                cql=attachment_cql,
+                expand=restrictions_expand,
+            ):
                 doc_metadata_list.append(
                     SlimDocument(
                         id=build_confluence_document_id(
                             self.wiki_base,
-                            page["_links"]["webui"],
+                            attachment["_links"]["webui"],
                             self.is_cloud,
                         ),
                         perm_sync_data=perm_sync_data,
                     )
                 )
-                attachment_cql = f"type=attachment and container='{page['id']}'"
-                attachment_cql += self.cql_label_filter
-                for attachments in self.confluence_client.cql_paginate_all_expansions(
-                    cql=attachment_cql,
-                    expand=restrictions_expand,
-                ):
-                    for attachment in attachments:
-                        doc_metadata_list.append(
-                            SlimDocument(
-                                id=build_confluence_document_id(
-                                    self.wiki_base,
-                                    attachment["_links"]["webui"],
-                                    self.is_cloud,
-                                ),
-                                perm_sync_data=perm_sync_data,
-                            )
-                        )
-                yield doc_metadata_list
-                doc_metadata_list = []
+            yield doc_metadata_list
+            doc_metadata_list = []
 
     @classmethod
     def _attachment_to_download_link(
