@@ -307,23 +307,22 @@ class ConfluenceConnector(LoadConnector, PollConnector, SlimConnector):
 
         page_query = self.cql_page_query + self.cql_label_filter + self.cql_time_filter
         # Fetch pages as Documents
-        for page_batch in self.confluence_client.paginated_cql_retrieval(
+        for page in self.confluence_client.paginated_cql_retrieval(
             cql=page_query,
             expand=",".join(_PAGE_EXPANSION_FIELDS),
             limit=self.batch_size,
         ):
-            for page in page_batch:
-                confluence_page_ids.append(page["id"])
-                doc, image_docs = self._convert_object_to_document(page)
+            confluence_page_ids.append(page["id"])
+            doc, image_docs = self._convert_object_to_document(page)
 
-                if doc is not None:
-                    doc_batch.append(doc)
-                if image_docs:
-                    doc_batch.extend(image_docs)
+            if doc is not None:
+                doc_batch.append(doc)
+            if image_docs:
+                doc_batch.extend(image_docs)
 
-                if len(doc_batch) >= self.batch_size:
-                    yield doc_batch
-                    doc_batch = []
+            if len(doc_batch) >= self.batch_size:
+                yield doc_batch
+                doc_batch = []
 
         # Fetch attachments as Documents
         for confluence_page_id in confluence_page_ids:

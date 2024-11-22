@@ -26,7 +26,12 @@ def summarize_image_pipeline(
 
     llm, _ = get_default_llms(timeout=5, temperature=0.0)
 
-    summary = summarize_image(encoded_image, query, system_prompt, llm)
+    summary = summarize_image(
+        encoded_image,
+        llm,
+        query,
+        system_prompt,
+    )
 
     return summary
 
