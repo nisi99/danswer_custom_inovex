@@ -1,5 +1,6 @@
 import multiprocessing
 from typing import Any
+from typing import cast
 
 from celery import bootsteps  # type: ignore
 from celery import Celery
@@ -14,10 +15,16 @@ from celery.signals import worker_shutdown
 import danswer.background.celery.apps.app_base as app_base
 from danswer.background.celery.apps.app_base import task_logger
 from danswer.background.celery.celery_utils import celery_is_worker_primary
+from danswer.background.celery.tasks.indexing.tasks import (
+    get_unfenced_index_attempt_ids,
+)
 from danswer.configs.constants import CELERY_PRIMARY_WORKER_LOCK_TIMEOUT
 from danswer.configs.constants import DanswerRedisLocks
 from danswer.configs.constants import POSTGRES_CELERY_WORKER_PRIMARY_APP_NAME
+from danswer.db.engine import get_session_with_default_tenant
 from danswer.db.engine import SqlEngine
+from danswer.db.index_attempt import get_index_attempt
+from danswer.db.index_attempt import mark_attempt_failed
 from danswer.redis.redis_connector_credential_pair import RedisConnectorCredentialPair
 from danswer.redis.redis_connector_delete import RedisConnectorDelete
 from danswer.redis.redis_connector_doc_perm_sync import RedisConnectorPermissionSync
@@ -91,6 +98,15 @@ def on_worker_init(sender: Any, **kwargs: Any) -> None:
     # by the primary worker. This is unnecessary in the multi tenant scenario
     r = get_redis_client(tenant_id=None)
 
+    # Log the role and slave count - being connected to a slave or slave count > 0 could be problematic
+    info: dict[str, Any] = cast(dict, r.info("replication"))
+    role: str = cast(str, info.get("role"))
+    connected_slaves: int = info.get("connected_slaves", 0)
+
+    logger.info(
+        f"Redis INFO REPLICATION: role={role} connected_slaves={connected_slaves}"
+    )
+
     # For the moment, we're assuming that we are the only primary worker
     # that should be running.
     # TODO: maybe check for or clean up another zombie primary worker if we detect it
@@ -139,6 +155,23 @@ def on_worker_init(sender: Any, **kwargs: Any) -> None:
     RedisConnectorPermissionSync.reset_all(r)
 
     RedisConnectorExternalGroupSync.reset_all(r)
+
+    # mark orphaned index attempts as failed
+    with get_session_with_default_tenant() as db_session:
+        unfenced_attempt_ids = get_unfenced_index_attempt_ids(db_session, r)
+        for attempt_id in unfenced_attempt_ids:
+            attempt = get_index_attempt(db_session, attempt_id)
+            if not attempt:
+                continue
+
+            failure_reason = (
+                f"Orphaned index attempt found on startup: "
+                f"index_attempt={attempt.id} "
+                f"cc_pair={attempt.connector_credential_pair_id} "
+                f"search_settings={attempt.search_settings_id}"
+            )
+            logger.warning(failure_reason)
+            mark_attempt_failed(attempt.id, db_session, failure_reason)
 
 
 @worker_ready.connect

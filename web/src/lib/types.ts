@@ -23,14 +23,28 @@ export enum UserRole {
   ADMIN = "admin",
   CURATOR = "curator",
   GLOBAL_CURATOR = "global_curator",
+  EXT_PERM_USER = "ext_perm_user",
+  SLACK_USER = "slack_user",
 }
 
 export const USER_ROLE_LABELS: Record<UserRole, string> = {
-  [UserRole.LIMITED]: "Limited",
   [UserRole.BASIC]: "Basic",
   [UserRole.ADMIN]: "Admin",
   [UserRole.GLOBAL_CURATOR]: "Global Curator",
   [UserRole.CURATOR]: "Curator",
+  [UserRole.LIMITED]: "Limited",
+  [UserRole.EXT_PERM_USER]: "External Permissioned User",
+  [UserRole.SLACK_USER]: "Slack User",
+};
+
+export const INVALID_ROLE_HOVER_TEXT: Partial<Record<UserRole, string>> = {
+  [UserRole.BASIC]: "Basic users can't perform any admin actions",
+  [UserRole.ADMIN]: "Admin users can perform all admin actions",
+  [UserRole.GLOBAL_CURATOR]:
+    "Global Curator users can perform admin actions for all groups they are a member of",
+  [UserRole.CURATOR]: "Curator role must be assigned in the Groups tab",
+  [UserRole.SLACK_USER]:
+    "This role is automatically assigned to users who only use Danswer via Slack",
 };
 
 export interface User {
@@ -190,7 +204,7 @@ export type AnswerFilterOption =
   | "questionmark_prefilter";
 
 export interface ChannelConfig {
-  channel_names: string[];
+  channel_name: string;
   respond_tag_only?: boolean;
   respond_to_bots?: boolean;
   respond_member_group_list?: string[];
@@ -200,13 +214,25 @@ export interface ChannelConfig {
 
 export type SlackBotResponseType = "quotes" | "citations";
 
-export interface SlackBotConfig {
+export interface SlackChannelConfig {
   id: number;
+  slack_bot_id: number;
   persona: Persona | null;
   channel_config: ChannelConfig;
   response_type: SlackBotResponseType;
   standard_answer_categories: StandardAnswerCategory[];
   enable_auto_filters: boolean;
+}
+
+export interface SlackBot {
+  id: number;
+  name: string;
+  enabled: boolean;
+  configs_count: number;
+
+  // tokens
+  bot_token: string;
+  app_token: string;
 }
 
 export interface SlackBotTokens {

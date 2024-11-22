@@ -3,7 +3,9 @@ from io import BytesIO
 
 from PIL import Image
 
+from danswer.configs.app_configs import CONTINUE_ON_CONNECTOR_FAILURE
 from danswer.llm.factory import get_default_llms
+from danswer.llm.interfaces import LLM
 from danswer.llm.utils import message_to_string
 from danswer.utils.logger import setup_logger
 
@@ -12,54 +14,66 @@ from danswer.utils.logger import setup_logger
 logger = setup_logger()
 
 
-def summarize_image(
+def summarize_image_pipeline(
     image_data: bytes, query: str | None = None, system_prompt: str | None = None
 ) -> str | None:
-    """Use default LLM (if it is multimodal) to generate a summary of an image."""
+    """Pipeline to generate a summary of an image.
+    Resizes images if it is bigger than 20MB. Encodes image as a base64 string.
+    And finally uses the Default LLM to generate a textual summary of the image."""
     # resize image if its bigger than 20MB
     image_data = _resize_image_if_needed(image_data)
 
     # encode image (base64)
     encoded_image = _encode_image(image_data)
 
+    llm, _ = get_default_llms(timeout=5, temperature=0.0)
+
+    summary = summarize_image(
+        encoded_image,
+        llm,
+        query,
+        system_prompt,
+    )
+
+    return summary
+
+
+def summarize_image(
+    encoded_image: str,
+    llm: LLM,
+    query: str | None = None,
+    system_prompt: str | None = None,
+) -> str | None:
+    """Use default LLM (if it is multimodal) to generate a summary of an image."""
+
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": query},
+                {"type": "image_url", "image_url": {"url": encoded_image}},
+            ],
+        },
+    ]
+
     try:
-        llm, _ = get_default_llms(timeout=5)
-
-        if not query:
-            query = "Summarize the content and the subject of the picture."
-        if not system_prompt:
-            system_prompt = """
-                You are an assistant for summarizing images for retrieval.
-                Summarize the content of the following image and be as precise as possible.
-                The summary will be embedded and used to retrieve the original image.
-                Therefore, write a concise summary of the image that is optimized for retrieval.
-            """
-
-        messages = [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": query},
-                    {"type": "image_url", "image_url": {"url": encoded_image}},
-                ],
-            },
-        ]
-        # filled_llm_prompt = dict_based_prompt_to_langchain_prompt([messages[1]])
-        # model_output_short = message_to_string(llm.invoke(filled_llm_prompt))
-
         model_output = message_to_string(llm.invoke(messages))
 
         return model_output
 
     except Exception as e:
-        logger.warning(f"An error occurred: {e}")
-
-
-# deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+        if CONTINUE_ON_CONNECTOR_FAILURE:
+            # Summary of this image will be empty
+            # prevents and infinity retry-loop of the indexing if single summaries fail
+            # for example because content filters got triggert...
+            logger.warning(f"Summarization failed with error: {e}.")
+            return None
+        else:
+            raise ValueError(f"Summarization failed with error: {e}.")
 
 
 def _encode_image(image_data: bytes) -> str:
